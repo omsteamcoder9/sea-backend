@@ -10,12 +10,13 @@ import { requireAuth, requireStrictAuth } from '../controllers/authController.js
 
 async function cartRoutes(fastify, options) {
   
-  // Public routes (guest cart - auth optional)
-  fastify.post('/cart', addToCart);
-  fastify.get('/cart', getCart);
-  fastify.put('/cart/items/:itemId', updateCartItem);
-  fastify.delete('/cart/items/:itemId', removeFromCart);
-  fastify.delete('/cart', clearCart);
+  // ✅ FIXED: Add requireAuth middleware to all cart routes
+  // This attaches the user to request.user for authenticated requests
+  fastify.post('/cart', { preHandler: requireAuth }, addToCart);
+  fastify.get('/cart', { preHandler: requireAuth }, getCart);
+  fastify.put('/cart/items/:itemId', { preHandler: requireAuth }, updateCartItem);
+  fastify.delete('/cart/items/:itemId', { preHandler: requireAuth }, removeFromCart);
+  fastify.delete('/cart', { preHandler: requireAuth }, clearCart);
   
   // Protected routes (require authentication for merging)
   fastify.post('/cart/merge', { preHandler: requireStrictAuth }, mergeCart);

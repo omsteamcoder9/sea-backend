@@ -331,36 +331,85 @@ export const updateProduct = async (request, reply) => {
             }
         }
         
-        // Handle variants and variant images
-        if (updateData.variants) {
-            let parsedVariants = typeof updateData.variants === 'string' 
-                ? JSON.parse(updateData.variants) 
-                : updateData.variants;
-            
-            existingProduct.variants = parsedVariants;
+// Handle variants and variant images - DON'T overwrite immediately
+if (updateData.variants) {
+    let parsedVariants = typeof updateData.variants === 'string' 
+        ? JSON.parse(updateData.variants) 
+        : updateData.variants;
+    
+    // First, process new variant images from uploaded files
+    const variantImagesMap = {};
+    files.forEach(file => {
+        const variantMatch = file.fieldname.match(/variants\[(\d+)\]\.images/);
+        if (variantMatch) {
+            const variantIndex = parseInt(variantMatch[1]);
+            if (!variantImagesMap[variantIndex]) variantImagesMap[variantIndex] = [];
+            variantImagesMap[variantIndex].push({ image: `/uploads/${file.filename}` });
         }
-        
-        // Handle deleted variant images
-        if (updateData.deletedVariantImages) {
-            let deletedVariantImages = updateData.deletedVariantImages;
-            if (typeof deletedVariantImages === 'string') {
-                try {
-                    deletedVariantImages = JSON.parse(deletedVariantImages);
-                } catch (e) {
-                    deletedVariantImages = deletedVariantImages.split(',').map(img => img.trim());
-                }
-            }
+    });
+    
+    // Merge new images with existing variant data
+    parsedVariants.forEach((variant, index) => {
+        if (existingProduct.variants[index]) {
+            // Keep existing images that weren't deleted
+            // (already filtered in frontend data)
+            const existingImages = existingProduct.variants[index].images || [];
+            const newImages = variantImagesMap[index] || [];
             
-            deletedVariantImages.forEach(imagePath => {
-                deleteImageFile(imagePath);
-                // Remove from variants in database
-                existingProduct.variants.forEach(variant => {
-                    if (variant.images) {
-                        variant.images = variant.images.filter(img => img.image !== imagePath);
-                    }
-                });
+            // Merge: use variant.images from frontend (which already has deletions filtered)
+            // BUT also add any newly uploaded images
+            variant.images = [...(variant.images || []), ...newImages];
+        }
+    });
+    
+    existingProduct.variants = parsedVariants;
+}
+        
+// Handle deleted variant images
+if (updateData.deletedVariantImages) {
+    let deletedVariantImages = updateData.deletedVariantImages;
+    if (typeof deletedVariantImages === 'string') {
+        try {
+            deletedVariantImages = JSON.parse(deletedVariantImages);
+        } catch (e) {
+            deletedVariantImages = deletedVariantImages.split(',').map(img => img.trim());
+        }
+    }
+    
+    // Convert object to array of image paths
+    let allDeletedImages = [];
+    
+    if (Array.isArray(deletedVariantImages)) {
+        // Already an array
+        allDeletedImages = deletedVariantImages;
+    } else if (typeof deletedVariantImages === 'object' && deletedVariantImages !== null) {
+        // Object format: {0: ["path1"], 1: ["path2"]}
+        Object.values(deletedVariantImages).forEach(images => {
+            if (Array.isArray(images)) {
+                allDeletedImages.push(...images);
+            } else if (typeof images === 'string') {
+                allDeletedImages.push(images);
+            }
+        });
+    }
+    
+    // Delete physical files
+    allDeletedImages.forEach(imagePath => {
+        deleteImageFile(imagePath);
+    });
+    
+    // Remove from variants in database
+    existingProduct.variants.forEach(variant => {
+        if (variant.images && variant.images.length > 0) {
+            variant.images = variant.images.filter(img => {
+                const imgPath = img.image || img;
+                return !allDeletedImages.includes(imgPath);
             });
         }
+    });
+    
+    console.log(`✅ Removed ${allDeletedImages.length} variant images`);
+}
         
         // Update other fields
         const updatableFields = ['name', 'basePrice', 'originalPrice', 'discountPercentage', 'hasOffer', 'description', 'category', 'seller', 
