@@ -12,6 +12,10 @@ const categorySchema = new mongoose.Schema({
     unique: true,
     sparse: true
   },
+  image: {                    // ← ADD THIS FIELD
+    type: String,
+    default: null
+  },
   status: {
     type: String,
     enum: ['active', 'inactive'],
@@ -21,7 +25,7 @@ const categorySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// NO pre-save middleware - completely removed
+// NO pre-save middleware - completely removed (as you had)
 
 const Category = mongoose.model('Category', categorySchema);
 export default Category;

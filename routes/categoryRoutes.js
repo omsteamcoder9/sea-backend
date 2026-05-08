@@ -9,18 +9,10 @@ import { requireAdmin } from '../controllers/authController.js';
 
 async function categoryRoutes(fastify, options) {
   
-  // Create category (Admin only)
+  // Create category (Admin only) - with image upload
+  // Remove schema validation for multipart/form-data
   fastify.post('/categories', {
-    preHandler: requireAdmin,
-    schema: {
-      body: {
-        type: 'object',
-        required: ['name'],
-        properties: {
-          name: { type: 'string', minLength: 1 }
-        }
-      }
-    }
+    preHandler: [requireAdmin, fastify.uploadImages, fastify.optimizeImages]
   }, createCategory);
   
   // Get all categories (Public)
@@ -29,18 +21,10 @@ async function categoryRoutes(fastify, options) {
   // Get single category (Public)
   fastify.get('/categories/:id', getCategoryById);
   
-  // Update category (Admin only)
+  // Update category (Admin only) - with image upload
+  // Remove schema validation for multipart/form-data
   fastify.put('/categories/:id', {
-    preHandler: requireAdmin,
-    schema: {
-      body: {
-        type: 'object',
-        required: ['name'],
-        properties: {
-          name: { type: 'string', minLength: 1 }
-        }
-      }
-    }
+    preHandler: [requireAdmin, fastify.uploadImages, fastify.optimizeImages]
   }, updateCategory);
   
   // Delete category (Admin only)
