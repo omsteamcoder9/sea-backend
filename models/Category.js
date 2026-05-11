@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import slugify from 'slugify';
 
 const categorySchema = new mongoose.Schema({
   name: {
@@ -12,7 +13,7 @@ const categorySchema = new mongoose.Schema({
     unique: true,
     sparse: true
   },
-  image: {                    // ← ADD THIS FIELD
+  image: {
     type: String,
     default: null
   },
@@ -25,7 +26,26 @@ const categorySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// NO pre-save middleware - completely removed (as you had)
+// ✅ ADD THIS pre-save middleware for auto slug generation
+categorySchema.pre('save', async function() {
+  if (this.isModified('name')) {
+    const baseSlug = slugify(this.name, { lower: true, strict: true });
+    let slug = baseSlug;
+    let counter = 1;
+    let slugExists = true;
+    
+    while (slugExists) {
+      const existingCategory = await this.constructor.findOne({ slug });
+      if (!existingCategory || existingCategory._id.equals(this._id)) {
+        slugExists = false;
+      } else {
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+    }
+    this.slug = slug;
+  }
+});
 
 const Category = mongoose.model('Category', categorySchema);
 export default Category;
