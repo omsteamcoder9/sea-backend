@@ -16,6 +16,7 @@ import { uploadImages, optimizeImages } from './middleware/uploadMiddleware.js';
 import cartRoutes from './routes/cartRoutes.js';
 import termsRoutes from './routes/termsRoutes.js';
 import privacyRoutes from './routes/privacyRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,6 +75,8 @@ await fastify.register(cartRoutes, { prefix: '/api' });
 await fastify.register(contactRoutes, { prefix: '/api' });
 await fastify.register(termsRoutes, { prefix: '/api' });
 await fastify.register(privacyRoutes, { prefix: '/api' });
+await fastify.register(orderRoutes, { prefix: '/api' });
+
 
 // Global error handler
 fastify.setErrorHandler((error, request, reply) => {
