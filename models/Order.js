@@ -41,6 +41,9 @@ const orderSchema = new mongoose.Schema({
   paymentStatus: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
   paidAt: { type: Date },
   
+  // ✅ ADD THIS MISSING FIELD
+  razorpayOrderId: { type: String, index: true },
+  
   // Amounts
   totalAmount: { type: Number, required: true },
   shippingFee: { type: Number, default: 0 },

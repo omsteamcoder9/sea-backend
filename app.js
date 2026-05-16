@@ -17,6 +17,9 @@ import cartRoutes from './routes/cartRoutes.js';
 import termsRoutes from './routes/termsRoutes.js';
 import privacyRoutes from './routes/privacyRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import settingsRoutes from './routes/settingsRoutes.js';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,6 +79,9 @@ await fastify.register(contactRoutes, { prefix: '/api' });
 await fastify.register(termsRoutes, { prefix: '/api' });
 await fastify.register(privacyRoutes, { prefix: '/api' });
 await fastify.register(orderRoutes, { prefix: '/api' });
+await fastify.register(paymentRoutes, { prefix: '/api' });
+await fastify.register(settingsRoutes, { prefix: '/api' });
+
 
 
 // Global error handler
