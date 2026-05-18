@@ -38,8 +38,22 @@ const orderSchema = new mongoose.Schema({
   // Payment
   paymentMethod: { type: String, enum: ['cod', 'razorpay', 'card'], required: true },
   paymentId: { type: String },
-  paymentStatus: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
+paymentStatus: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' },
   paidAt: { type: Date },
+  // Add these inside your Order schema
+refundStatus: {
+  type: String,
+  enum: ['pending', 'completed', 'failed', 'not_applicable'],
+  default: null
+},
+refundMessage: {
+  type: String,
+  default: ''
+},
+refundedAt: {
+  type: Date,
+  default: null
+},
   
   // ✅ ADD THIS MISSING FIELD
   razorpayOrderId: { type: String, index: true },

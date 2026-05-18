@@ -24,6 +24,14 @@ const settingSchema = new mongoose.Schema({
     type: String,
     default: 'My Store'
   },
+  siteTitle: {
+    type: String,
+    default: ''
+  },
+  siteDescription: {
+    type: String,
+    default: ''
+  },
   contactEmail: {
     type: String,
     default: 'contact@example.com'
@@ -31,6 +39,74 @@ const settingSchema = new mongoose.Schema({
   contactNumber: {
     type: String,
     default: '+91 1234567890'
+  },
+  companyAddress: {
+    type: String,
+    default: ''
+  },
+  
+  // Social Media Settings
+  socialMedia: {
+    facebook: {
+      type: String,
+      default: ''
+    },
+    instagram: {
+      type: String,
+      default: ''
+    },
+    twitter: {
+      type: String,
+      default: ''
+    },
+    youtube: {
+      type: String,
+      default: ''
+    },
+    linkedin: {
+      type: String,
+      default: ''
+    }
+  },
+  
+  // Footer Settings
+  footerText: {
+    type: String,
+    default: ''
+  },
+  footerLinks: {
+    type: Array,
+    default: []
+  },
+  
+  // SEO Settings
+  metaKeywords: {
+    type: Array,
+    default: []
+  },
+  googleAnalyticsId: {
+    type: String,
+    default: ''
+  },
+  
+  // Script Tags
+  headerScripts: {
+    type: String,
+    default: ''
+  },
+  bodyScripts: {
+    type: String,
+    default: ''
+  },
+  footerScripts: {
+    type: String,
+    default: ''
+  },
+  
+  // Maintenance Mode
+  maintenanceMode: {
+    type: Boolean,
+    default: false
   },
   
   updatedAt: {
@@ -59,8 +135,17 @@ settingSchema.statics.getPublicSettings = async function() {
     razorpayKeyId: settings.razorpayKeyId,
     cashOnDeliveryEnabled: settings.cashOnDeliveryEnabled,
     siteName: settings.siteName,
+    siteTitle: settings.siteTitle,
+    siteDescription: settings.siteDescription,
     contactEmail: settings.contactEmail,
-    contactNumber: settings.contactNumber
+    contactNumber: settings.contactNumber,
+    companyAddress: settings.companyAddress,
+    socialMedia: settings.socialMedia,
+    footerText: settings.footerText,
+    footerLinks: settings.footerLinks,
+    metaKeywords: settings.metaKeywords,
+    googleAnalyticsId: settings.googleAnalyticsId,
+    maintenanceMode: settings.maintenanceMode
   };
 };
 

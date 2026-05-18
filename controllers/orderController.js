@@ -1,6 +1,7 @@
 import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/productModel.js';
+import Setting from '../models/Setting.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -37,6 +38,44 @@ try {
 } catch (error) {
   console.error('❌ Error loading ward data:', error.message);
 }
+
+// Helper: Get dynamic store settings
+let cachedSettings = null;
+let settingsCacheTime = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+const getStoreSettings = async () => {
+  const now = Date.now();
+  if (cachedSettings && settingsCacheTime && (now - settingsCacheTime) < CACHE_DURATION) {
+    return cachedSettings;
+  }
+  
+  try {
+    const settings = await Setting.getSettings();
+    cachedSettings = {
+      siteName: settings.siteName || 'GLAINIC',
+      contactEmail: settings.contactEmail || 'contact@example.com',
+      contactNumber: settings.contactNumber || '+91 98765 43210',
+      companyAddress: settings.companyAddress || 'Ganga Enterprise, 2nd Floor, Spencer Plaza, Anna Salai, Chennai',
+      socialMedia: settings.socialMedia || {},
+      razorpayKeyId: settings.razorpayKeyId || '',
+      razorpayKeySecret: settings.razorpayKeySecret || ''
+    };
+    settingsCacheTime = now;
+    return cachedSettings;
+  } catch (error) {
+    console.error('Error fetching settings for receipt:', error);
+    return {
+      siteName: 'GLAINIC',
+      contactEmail: 'contact@example.com',
+      contactNumber: '+91 98765 43210',
+      companyAddress: 'Ganga Enterprise, 2nd Floor, Spencer Plaza, Anna Salai, Chennai',
+      socialMedia: {},
+      razorpayKeyId: '',
+      razorpayKeySecret: ''
+    };
+  }
+};
 
 // Helper: Extract core street name
 const extractCoreStreetName = (street) => {
@@ -300,41 +339,41 @@ export const createOrder = async (request, reply) => {
     console.log(`📦 Cart has ${cart.items.length} items`);
     console.log(`📍 Shipping address: "${shippingAddress.street}, ${shippingAddress.city}"`);
     
- // ========== WARD MATCHING LOGIC - REQUIRED ==========
-let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
+    // ========== WARD MATCHING LOGIC - REQUIRED ==========
+    let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
 
-const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
-if (exactMatch) wardInfo = exactMatch;
+    const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
+    if (exactMatch) wardInfo = exactMatch;
 
-if (!wardInfo.wardId) {
-  const coreMatch = findWardByCoreStreetName(shippingAddress.street);
-  if (coreMatch) wardInfo = coreMatch;
-}
+    if (!wardInfo.wardId) {
+      const coreMatch = findWardByCoreStreetName(shippingAddress.street);
+      if (coreMatch) wardInfo = coreMatch;
+    }
 
-if (!wardInfo.wardId) {
-  const keywordMatch = findWardByKeyword(shippingAddress);
-  if (keywordMatch) wardInfo = keywordMatch;
-}
+    if (!wardInfo.wardId) {
+      const keywordMatch = findWardByKeyword(shippingAddress);
+      if (keywordMatch) wardInfo = keywordMatch;
+    }
 
-if (!wardInfo.wardId) {
-  const coordinates = await geocodeAddress(shippingAddress);
-  if (coordinates) {
-    const foundWard = findWardByCoordinates(coordinates.lat, coordinates.lng);
-    if (foundWard) wardInfo = foundWard;
-  }
-}
+    if (!wardInfo.wardId) {
+      const coordinates = await geocodeAddress(shippingAddress);
+      if (coordinates) {
+        const foundWard = findWardByCoordinates(coordinates.lat, coordinates.lng);
+        if (foundWard) wardInfo = foundWard;
+      }
+    }
 
-// ✅ NEW: REJECT order if no ward match found
-if (!wardInfo.wardId) {
-  console.log(`❌ Order REJECTED: Street "${shippingAddress.street}" not found in Karaikudi wards`);
-  return reply.status(400).send({
-    success: false,
-    code: 'STREET_NOT_FOUND',
-    message: `We couldn't verify your address "${shippingAddress.street}". Please enter a valid street name in Karaikudi.`
-  });
-}
+    // REJECT order if no ward match found
+    if (!wardInfo.wardId) {
+      console.log(`❌ Order REJECTED: Street "${shippingAddress.street}" not found in Karaikudi wards`);
+      return reply.status(400).send({
+        success: false,
+        code: 'STREET_NOT_FOUND',
+        message: `We couldn't verify your address "${shippingAddress.street}". Please enter a valid street name in Karaikudi.`
+      });
+    }
 
-console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
+    console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
     
     // Process cart items
     let totalAmount = 0;
@@ -433,7 +472,7 @@ console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
         image: productImage
       });
       
-      console.log(`  ✅ Added to order: ${item.quantity} x ₹${itemPrice} = ₹${itemTotal}`);
+      console.log(`  ✅ Added to order: ${item.quantity} x ${itemPrice} = ${itemTotal}`);
     }
     
     // Calculate totals
@@ -448,9 +487,9 @@ console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
     const finalAmount = totalAmount + shippingFee + taxAmount;
     
     console.log(`\n💰 Order totals:`);
-    console.log(`   Subtotal: ₹${totalAmount}`);
-    console.log(`   Tax (5%): ₹${taxAmount}`);
-    console.log(`   Final: ₹${finalAmount}`);
+    console.log(`   Subtotal: ${totalAmount}`);
+    console.log(`   Tax (5%): ${taxAmount}`);
+    console.log(`   Final: ${finalAmount}`);
     
     // Create order
     const order = await Order.create({
@@ -555,5 +594,1069 @@ export const getOrderById = async (request, reply) => {
   } catch (error) {
     console.error('Get order by ID error:', error);
     return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// ADMIN: Get all orders (with optional filters)
+export const getAllOrders = async (request, reply) => {
+  try {
+    // Check if user is admin
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({
+        success: false,
+        message: 'Access denied. Admin only.'
+      });
+    }
+
+    const { status, paymentStatus, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = request.query;
+    
+    // Build filter
+    const filter = {};
+    if (status) filter.orderStatus = status;
+    if (paymentStatus) filter.paymentStatus = paymentStatus;
+    
+    // Pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+    
+    // Get orders with user population
+    const orders = await Order.find(filter)
+      .populate('user', 'name phone')
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    const totalOrders = await Order.countDocuments(filter);
+    
+    return reply.status(200).send({
+      success: true,
+      orders,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalOrders / parseInt(limit)),
+        totalOrders,
+        limit: parseInt(limit)
+      }
+    });
+  } catch (error) {
+    console.error('Get all orders error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// ADMIN: Get order statistics
+export const getOrderStats = async (request, reply) => {
+  try {
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({
+        success: false,
+        message: 'Access denied. Admin only.'
+      });
+    }
+
+    const totalOrders = await Order.countDocuments();
+    const totalRevenue = await Order.aggregate([
+      { $match: { orderStatus: { $ne: 'cancelled' } } },
+      { $group: { _id: null, total: { $sum: '$finalAmount' } } }
+    ]);
+    
+    const ordersByStatus = await Order.aggregate([
+      { $group: { _id: '$orderStatus', count: { $sum: 1 } } }
+    ]);
+    
+    const ordersByPaymentStatus = await Order.aggregate([
+      { $group: { _id: '$paymentStatus', count: { $sum: 1 } } }
+    ]);
+    
+    const recentOrders = await Order.find()
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('user', 'name');
+
+    return reply.status(200).send({
+      success: true,
+      stats: {
+        totalOrders,
+        totalRevenue: totalRevenue[0]?.total || 0,
+        ordersByStatus,
+        ordersByPaymentStatus,
+        recentOrders
+      }
+    });
+  } catch (error) {
+    console.error('Get order stats error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// ADMIN: Update order status
+export const updateOrderStatus = async (request, reply) => {
+  try {
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({
+        success: false,
+        message: 'Access denied. Admin only.'
+      });
+    }
+
+    const { id } = request.params;
+    const { orderStatus, paymentStatus, cancellationReason } = request.body;
+    
+    const order = await Order.findById(id);
+    
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+    
+    // Update fields if provided
+    if (orderStatus) {
+      // Handle special status transitions
+      if (orderStatus === 'delivered' && order.orderStatus !== 'delivered') {
+        order.deliveredAt = new Date();
+      }
+      
+      if (orderStatus === 'cancelled' && order.orderStatus !== 'cancelled') {
+        order.cancelledAt = new Date();
+        if (cancellationReason) order.cancellationReason = cancellationReason;
+        
+        // Restore stock for cancelled orders
+        console.log(`📦 Restoring stock for cancelled order ${order.orderId}...`);
+        for (const item of order.products) {
+          if (item.variantId) {
+            const product = await Product.findById(item.product);
+            if (product && product.variants) {
+              const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
+              if (variantIndex !== -1) {
+                product.variants[variantIndex].stock += item.quantity;
+                const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+                product.stock = totalStock;
+                await product.save();
+                console.log(`  ✅ Restored ${item.quantity} stock for ${item.name} variant`);
+              }
+            }
+          }
+        }
+      }
+      
+      order.orderStatus = orderStatus;
+    }
+    
+    if (paymentStatus) {
+      if (paymentStatus === 'completed' && order.paymentStatus !== 'completed') {
+        order.paidAt = new Date();
+      }
+      order.paymentStatus = paymentStatus;
+    }
+    
+    await order.save();
+    
+    console.log(`✅ Admin updated order ${order.orderId}: status=${order.orderStatus}, payment=${order.paymentStatus}`);
+    
+    return reply.status(200).send({
+      success: true,
+      message: 'Order updated successfully',
+      order: {
+        _id: order._id,
+        orderId: order.orderId,
+        orderStatus: order.orderStatus,
+        paymentStatus: order.paymentStatus,
+        deliveredAt: order.deliveredAt,
+        cancelledAt: order.cancelledAt
+      }
+    });
+  } catch (error) {
+    console.error('Update order status error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// ADMIN: Get single order (full details with populations)
+export const getAdminOrderById = async (request, reply) => {
+  try {
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({
+        success: false,
+        message: 'Access denied. Admin only.'
+      });
+    }
+
+    const { id } = request.params;
+    
+    const order = await Order.findById(id)
+      .populate('user', 'name phone')
+      .populate('products.product', 'name basePrice images');
+    
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+    
+    return reply.status(200).send({
+      success: true,
+      order
+    });
+  } catch (error) {
+    console.error('Get admin order error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// ========== PRINT RECEIPT FUNCTIONS ==========
+
+// @desc    Print order receipt (JSON)
+// @route   GET /api/orders/:id/receipt
+// @access  Private
+export const printOrderReceipt = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const userId = request.user.userId || request.user.id;
+    const isAdmin = request.user.role === 'admin';
+
+    const order = await Order.findById(id)
+      .populate('user', 'name')
+      .populate('products.product', 'name price image');
+
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Authorization check
+    const isOrderOwner = order.user && order.user._id.toString() === userId;
+    if (!isOrderOwner && !isAdmin) {
+      return reply.status(403).send({
+        success: false,
+        message: 'Not authorized to view this receipt'
+      });
+    }
+
+    // Get dynamic store settings
+    const storeSettings = await getStoreSettings();
+
+    // Format receipt data
+    const receiptData = {
+      receiptNumber: order._id.toString(),
+      orderNumber: order.orderId || order._id.toString(),
+      date: order.createdAt,
+      store: {
+        name: storeSettings.siteName,
+        email: storeSettings.contactEmail,
+        phone: storeSettings.contactNumber,
+        address: storeSettings.companyAddress
+      },
+      customer: {
+        id: order.user?._id,
+        name: order.user?.name || 'Customer',
+      },
+      shippingAddress: order.shippingAddress,
+      items: order.products.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        total: (item.quantity * item.price).toFixed(2),
+        variantName: item.variantName
+      })),
+      pricing: {
+        subtotal: order.totalAmount || 0,
+        tax: order.taxAmount || 0,
+        shipping: order.shippingFee || 0,
+        total: order.finalAmount || 0
+      },
+      payment: {
+        method: order.paymentMethod,
+        status: order.paymentStatus,
+        paidAt: order.paidAt
+      }
+    };
+
+    // Return JSON
+    return reply.status(200).send({
+      success: true,
+      message: 'Receipt generated successfully',
+      receipt: receiptData
+    });
+
+  } catch (error) {
+    console.error('Receipt generation error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Error generating receipt',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Print order receipt PDF
+// @route   GET /api/orders/:id/receipt/pdf
+// @access  Private
+export const printOrderReceiptPDF = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const userId = request.user.userId || request.user.id;
+    const isAdmin = request.user.role === 'admin';
+
+    const order = await Order.findById(id)
+      .populate('user', 'name')
+      .populate('products.product', 'name price image');
+
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Authorization check
+    const isOrderOwner = order.user && order.user._id.toString() === userId;
+    if (!isOrderOwner && !isAdmin) {
+      return reply.status(403).send({
+        success: false,
+        message: 'Not authorized to view this receipt'
+      });
+    }
+
+    // Get dynamic store settings
+    const storeSettings = await getStoreSettings();
+
+    // Format receipt data
+    const receiptData = {
+      receiptNumber: order._id.toString(),
+      orderNumber: order.orderId || order._id.toString(),
+      date: order.createdAt,
+      store: {
+        name: storeSettings.siteName,
+        email: storeSettings.contactEmail,
+        phone: storeSettings.contactNumber,
+        address: storeSettings.companyAddress
+      },
+      customer: {
+        name: order.user?.name || 'Customer',
+      },
+      shippingAddress: order.shippingAddress,
+      items: order.products.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        total: (item.quantity * item.price).toFixed(2),
+        variantName: item.variantName
+      })),
+      pricing: {
+        subtotal: order.totalAmount || 0,
+        tax: order.taxAmount || 0,
+        shipping: order.shippingFee || 0,
+        total: order.finalAmount || 0
+      },
+      payment: {
+        method: order.paymentMethod,
+        status: order.paymentStatus
+      }
+    };
+
+    // Set headers for PDF download
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="receipt-${order.orderId}.pdf"`);
+    
+    // Generate PDF buffer with dynamic store info
+    const pdfBuffer = await generateReceiptPDFBuffer(receiptData);
+    
+    // Send PDF buffer
+    return reply.status(200).send(pdfBuffer);
+
+  } catch (error) {
+    console.error('PDF receipt generation error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Error generating PDF receipt',
+      error: error.message
+    });
+  }
+};
+
+// Helper function to generate PDF buffer with dynamic store info
+const generateReceiptPDFBuffer = async (receiptData) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const PDFDocument = await import('pdfkit').then(m => m.default);
+      const doc = new PDFDocument({ margin: 50 });
+      const buffers = [];
+
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => {
+        const pdfData = Buffer.concat(buffers);
+        resolve(pdfData);
+      });
+
+      // Add PDF content with dynamic store info
+      addPDFHeader(doc, receiptData);
+      addPDFCustomerInfo(doc, receiptData);
+      addPDFItemsTable(doc, receiptData);
+      addPDFTotals(doc, receiptData);
+      addPDFFooter(doc);
+
+      doc.end();
+
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+// PDF generation helper functions with dynamic store info
+const addPDFHeader = (doc, data) => {
+  doc.fontSize(20)
+     .font('Helvetica-Bold')
+     .fillColor('#1a237e')
+     .text(data.store.name, { align: 'center' })
+     .moveDown(0.5);
+  
+  doc.fontSize(10)
+     .font('Helvetica')
+     .fillColor('#666')
+     .text('Order Receipt', { align: 'center' })
+     .moveDown(1);
+};
+
+const addPDFCustomerInfo = (doc, data) => {
+  const startX = 50;
+  const startY = doc.y;
+  
+  // FROM section - Dynamic store info
+  doc.fontSize(10)
+    .font('Helvetica-Bold')
+    .fillColor('#000')
+    .text('FROM:', startX, startY);
+
+  doc.moveDown(0.5);
+  doc.font('Helvetica').fontSize(9);
+  doc.text(data.store.name, startX);
+  
+  // Split address into multiple lines if needed
+  const addressLines = data.store.address.split(',').map(line => line.trim());
+  for (const line of addressLines) {
+    doc.text(line, startX);
+  }
+  doc.text(`Phone: ${data.store.phone}`, startX);
+  doc.text(`Email: ${data.store.email}`, startX);
+
+  let fromBottomY = doc.y;
+  
+  // ORDER section
+  const orderColumnX = startX + 200;
+  
+  doc.fontSize(12)
+    .font('Helvetica-Bold')
+    .fillColor('#000')
+    .text('ORDER RECEIPT', orderColumnX, startY);
+  
+  let orderY = doc.y + 10;
+  doc.fontSize(9)
+    .font('Helvetica')
+    .fillColor('#333')
+    .text(`Order #: ${data.orderNumber}`, orderColumnX, orderY);
+  
+  orderY += 15;
+  doc.text(`Date: ${new Date(data.date).toLocaleDateString()}`, orderColumnX, orderY);
+  
+  orderY += 15;
+  doc.text(`Payment: ${data.payment.method}`, orderColumnX, orderY);
+  
+  orderY += 15;
+  doc.text(`Status: ${data.payment.status}`, orderColumnX, orderY);
+  
+  // TO section
+  const toColumnX = startX + 390;
+  
+  doc.fontSize(10)
+    .font('Helvetica-Bold')
+    .fillColor('#000')
+    .text('TO:', toColumnX, startY);
+  
+  doc.font('Helvetica').fontSize(9);
+  let toY = doc.y + 10;
+  doc.text(data.customer.name || 'Customer Name', toColumnX, toY, { width: 150 });
+  toY += 15;
+  
+  if (data.shippingAddress) {
+    if (data.shippingAddress.street) {
+      doc.text(data.shippingAddress.street, toColumnX, toY, { width: 150 });
+      toY += 15;
+    }
+    const cityStateZip = [
+      data.shippingAddress.city,
+      data.shippingAddress.state,
+      data.shippingAddress.postalCode
+    ].filter(Boolean).join(', ');
+    if (cityStateZip) {
+      doc.text(cityStateZip, toColumnX, toY, { width: 150 });
+      toY += 15;
+    }
+    if (data.shippingAddress.country) {
+      doc.text(data.shippingAddress.country, toColumnX, toY, { width: 150 });
+      toY += 15;
+    }
+    if (data.shippingAddress.phone) {
+      doc.text(`Phone: ${data.shippingAddress.phone}`, toColumnX, toY, { width: 150 });
+      toY += 15;
+    }
+  }
+  
+  // Set cursor to bottom of tallest column
+  const maxHeight = Math.max(
+    fromBottomY - startY,
+    orderY - startY,
+    toY - startY
+  );
+  doc.y = startY + maxHeight + 20;
+};
+
+const addPDFItemsTable = (doc, data) => {
+  const tableTop = doc.y + 10;
+  
+  // Table header
+  doc.font('Helvetica-Bold')
+     .fontSize(9)
+     .text('PRODUCT', 50, tableTop)
+     .text('QTY', 250, tableTop)
+     .text('PRICE', 350, tableTop)
+     .text('TOTAL', 450, tableTop);
+  
+  // Line under header
+  doc.moveTo(50, tableTop + 15)
+     .lineTo(550, tableTop + 15)
+     .stroke();
+  
+  let yPosition = tableTop + 25;
+  
+  // Table rows
+  data.items.forEach((item) => {
+    if (yPosition > 700) {
+      doc.addPage();
+      yPosition = 50;
+    }
+    
+    doc.font('Helvetica')
+       .fontSize(8)
+       .text(item.name, 50, yPosition, { width: 180 })
+       .text(item.quantity.toString(), 250, yPosition)
+       .text(`${item.price}`, 350, yPosition)
+       .text(`${item.total}`, 450, yPosition);
+    
+    yPosition += 18;
+    doc.fillColor('#000');
+  });
+  
+  doc.y = yPosition + 10;
+};
+
+const addPDFTotals = (doc, data) => {
+  const totalsTop = doc.y;
+  
+  doc.font('Helvetica')
+     .fontSize(9)
+     .text(`Subtotal: ${data.pricing.subtotal.toFixed(2)}`, 400, totalsTop)
+     .text(`Tax: ${data.pricing.tax.toFixed(2)}`, 400, totalsTop + 15)
+     .text(`Shipping: ${data.pricing.shipping.toFixed(2)}`, 400, totalsTop + 30);
+  
+  doc.moveTo(400, totalsTop + 45)
+     .lineTo(520, totalsTop + 45)
+     .stroke();
+  
+  doc.font('Helvetica-Bold')
+     .fontSize(10)
+     .text(`TOTAL: ${data.pricing.total.toFixed(2)}`, 400, totalsTop + 55);
+};
+
+const addPDFFooter = (doc) => {
+  doc.y = 750;
+  doc.fontSize(8)
+     .fillColor('#666666')
+     .text('Thank you for your business!', { align: 'center' });
+};
+
+// ========== ORDER STATUS FUNCTIONS ==========
+
+// @desc    Update order status by orderId (not MongoDB _id)
+// @route   PUT /api/orders/order-status/:orderId
+// @access  Private/Admin
+export const updateOrderStatusByOrderId = async (request, reply) => {
+  try {
+    const { orderStatus } = request.body;
+    const { orderId } = request.params;
+
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({
+        success: false,
+        message: 'Access denied. Admin only.'
+      });
+    }
+
+    console.log('Updating order status for orderId:', orderId);
+
+    // Find order by orderId field
+    const order = await Order.findOne({ orderId: orderId })
+      .populate('user', 'name ');
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    const oldStatus = order.orderStatus;
+    order.orderStatus = orderStatus;
+
+    // Handle delivered orders
+    if (orderStatus === 'delivered') {
+      order.deliveredAt = new Date();
+      if (order.paymentMethod === 'cod') {
+        order.paymentStatus = 'completed';
+      }
+    }
+
+    // Handle cancelled orders
+    if (orderStatus === 'cancelled' && oldStatus !== 'cancelled') {
+      order.cancelledAt = new Date();
+      // Restore stock
+      for (const item of order.products) {
+        if (item.variantId) {
+          const product = await Product.findById(item.product);
+          if (product && product.variants) {
+            const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
+            if (variantIndex !== -1) {
+              product.variants[variantIndex].stock += item.quantity;
+              const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+              product.stock = totalStock;
+              await product.save();
+            }
+          }
+        }
+      }
+    }
+
+    await order.save();
+
+    return reply.status(200).send({
+      success: true,
+      message: `Order status updated from ${oldStatus} to ${orderStatus}`,
+      order: {
+        orderId: order.orderId,
+        orderStatus: order.orderStatus,
+        paymentStatus: order.paymentStatus,
+        deliveredAt: order.deliveredAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Update order status by orderId error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const cancelOrder = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const { cancellationReason } = request.body;
+    const userId = request.user.userId || request.user.id;
+    const isAdmin = request.user.role === 'admin';
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Check authorization
+    const isOrderOwner = order.user && order.user.toString() === userId;
+    if (!isOrderOwner && !isAdmin) {
+      return reply.status(403).send({
+        success: false,
+        message: 'Not authorized to cancel this order'
+      });
+    }
+
+    // Check if order can be cancelled
+    if (order.orderStatus === 'cancelled') {
+      return reply.status(400).send({
+        success: false,
+        message: 'Order is already cancelled'
+      });
+    }
+
+    const cancellableStatuses = ['pending', 'confirmed', 'processing'];
+    if (!cancellableStatuses.includes(order.orderStatus)) {
+      return reply.status(400).send({
+        success: false,
+        message: `Cannot cancel order that is already ${order.orderStatus}`
+      });
+    }
+
+    // ⚠️ REMOVE THE AUTOMATIC REFUND CODE - DON'T PROCESS REFUND HERE
+    
+    // Update order to cancelled (ONLY - no refund)
+    order.orderStatus = 'cancelled';
+    order.cancelledAt = new Date();
+    if (cancellationReason) {
+      order.cancellationReason = cancellationReason;
+    }
+    
+    // DO NOT set refundStatus or process refund here
+    // Refund will be handled manually by admin via the Refund button
+
+    // Restore product stock
+    for (const item of order.products) {
+      if (item.variantId) {
+        const product = await Product.findById(item.product);
+        if (product && product.variants) {
+          const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
+          if (variantIndex !== -1) {
+            product.variants[variantIndex].stock += item.quantity;
+            const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+            product.stock = totalStock;
+            await product.save();
+          }
+        }
+      }
+    }
+
+    await order.save();
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Order cancelled successfully. Refund can be processed by admin.',
+      order: {
+        _id: order._id,
+        orderId: order.orderId,
+        orderStatus: order.orderStatus,
+        cancelledAt: order.cancelledAt,
+        cancellationReason: order.cancellationReason
+      }
+    });
+
+  } catch (error) {
+    console.error('Cancel order error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Server error while cancelling order',
+      error: error.message
+    });
+  }
+};
+
+// ========== DELETE ORDER ==========
+
+// @desc    Delete order (Admin only)
+// @route   DELETE /api/orders/:id
+// @access  Private/Admin
+export const deleteOrder = async (request, reply) => {
+  try {
+    const { id } = request.params;
+
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({
+        success: false,
+        message: 'Access denied. Admin only.'
+      });
+    }
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Optional: Prevent deletion of delivered orders
+    if (order.orderStatus === 'delivered') {
+      return reply.status(400).send({
+        success: false,
+        message: 'Cannot delete a delivered order'
+      });
+    }
+
+    await order.deleteOne();
+
+    console.log(`✅ Admin deleted order ${order.orderId}`);
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Order deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete order error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// ========== PAYMENT WEBHOOK FUNCTIONS ==========
+
+// @desc    Update order payment success (for Razorpay verification)
+// @route   PUT /api/orders/payment-success
+// @access  Public (called by Razorpay webhook)
+export const updateOrderPaymentSuccess = async (request, reply) => {
+  try {
+    const { orderId, paymentId } = request.body;
+
+    if (!orderId || !paymentId) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Order ID and Payment ID are required'
+      });
+    }
+
+    // Find order by orderId field
+    const order = await Order.findOne({ orderId });
+
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Update product stock for Razorpay payments
+    if (order.paymentMethod === 'razorpay' && order.paymentStatus !== 'completed') {
+      for (const item of order.products) {
+        if (item.variantId) {
+          const product = await Product.findById(item.product);
+          if (product && product.variants) {
+            const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
+            if (variantIndex !== -1) {
+              product.variants[variantIndex].stock -= item.quantity;
+              const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+              product.stock = totalStock;
+              await product.save();
+            }
+          }
+        }
+      }
+    }
+
+    // Update order status
+    order.paymentStatus = 'completed';
+    order.orderStatus = 'confirmed';
+    order.paymentId = paymentId;
+    order.paidAt = new Date();
+    await order.save();
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Order payment status updated successfully',
+      order
+    });
+
+  } catch (error) {
+    console.error('Update order payment success error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Update order payment failed
+// @route   PUT /api/orders/payment-failed
+// @access  Public (called by Razorpay webhook)
+export const updateOrderPaymentFailed = async (request, reply) => {
+  try {
+    const { orderId } = request.body;
+
+    if (!orderId) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Order ID is required'
+      });
+    }
+
+    const order = await Order.findOne({ orderId });
+
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    order.paymentStatus = 'failed';
+    order.orderStatus = 'cancelled';
+    await order.save();
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Order payment status updated to failed',
+      order
+    });
+
+  } catch (error) {
+    console.error('Update order payment failed error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Process refund for an order (Admin only)
+// @route   POST /api/admin/orders/:id/refund
+// @access  Private/Admin
+export const processRefund = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const { amount, reason } = request.body;
+    
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({
+        success: false,
+        message: 'Access denied. Admin only.'
+      });
+    }
+    
+    const order = await Order.findById(id);
+    
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+    
+    // Check if order is already refunded
+    if (order.refundStatus === 'completed') {
+      return reply.status(400).send({
+        success: false,
+        message: 'This order has already been refunded',
+        refundDetails: {
+          refundId: order.refundMessage,
+          refundedAt: order.refundedAt,
+          refundStatus: order.refundStatus
+        }
+      });
+    }
+    
+    // Check if order is eligible for refund
+    if (order.paymentMethod !== 'razorpay') {
+      return reply.status(400).send({
+        success: false,
+        message: 'Only Razorpay orders can be refunded'
+      });
+    }
+    
+    if (order.paymentStatus !== 'completed') {
+      return reply.status(400).send({
+        success: false,
+        message: 'Only completed payments can be refunded'
+      });
+    }
+    
+    if (!order.paymentId) {
+      return reply.status(400).send({
+        success: false,
+        message: 'No payment ID found for this order'
+      });
+    }
+    
+    const refundAmount = amount || order.finalAmount;
+    const refundAmountInPaise = Math.round(refundAmount * 100);
+    
+    console.log(`💰 Processing refund for order ${order.orderId}`);
+    console.log(`   Amount: ₹${refundAmount}`);
+    console.log(`   Payment ID: ${order.paymentId}`);
+    
+    try {
+      // Get Razorpay keys from database settings
+      const settings = await getStoreSettings();
+      
+      if (!settings.razorpayKeyId || !settings.razorpayKeySecret) {
+        throw new Error('Razorpay keys not configured in settings');
+      }
+      
+      const Razorpay = await import('razorpay');
+      const razorpay = new Razorpay.default({
+        key_id: settings.razorpayKeyId,
+        key_secret: settings.razorpayKeySecret
+      });
+      
+      const refund = await razorpay.payments.refund(order.paymentId, {
+        amount: refundAmountInPaise,
+        speed: 'normal',
+        notes: {
+          orderId: order.orderId,
+          reason: reason || 'Refund processed by admin'
+        }
+      });
+      
+      // Update order with refund information
+      order.refundStatus = 'completed';
+      order.refundMessage = `Refund processed. Refund ID: ${refund.id}. Reason: ${reason || 'Admin initiated refund'}`;
+      order.refundedAt = new Date();
+      order.paymentStatus = 'refunded';  // ← UPDATE paymentStatus as well
+      await order.save();
+      
+      console.log(`✅ Refund processed successfully. Refund ID: ${refund.id}`);
+      
+      return reply.status(200).send({
+        success: true,
+        message: 'Refund processed successfully',
+        refund: {
+          id: refund.id,
+          amount: refundAmount,
+          status: refund.status,
+          createdAt: refund.created_at
+        }
+      });
+      
+    } catch (refundError) {
+      console.error('❌ Refund failed:', refundError);
+      
+      // Check if payment is already refunded on Razorpay
+      if (refundError.error && refundError.error.description === 'The payment has been fully refunded already') {
+        order.refundStatus = 'completed';
+        order.refundMessage = `Payment already refunded on Razorpay. Original error: ${refundError.error.description}`;
+        order.refundedAt = new Date();
+        order.paymentStatus = 'refunded';
+        await order.save();
+        
+        return reply.status(200).send({
+          success: true,
+          message: 'Payment was already refunded. Database updated.',
+          alreadyRefunded: true
+        });
+      }
+      
+      order.refundStatus = 'failed';
+      order.refundMessage = `Refund failed: ${refundError.message}`;
+      await order.save();
+      
+      return reply.status(500).send({
+        success: false,
+        message: 'Refund failed',
+        error: refundError.message
+      });
+    }
+    
+  } catch (error) {
+    console.error('Process refund error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
+    });
   }
 };
