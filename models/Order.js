@@ -7,7 +7,7 @@ const orderSchema = new mongoose.Schema({
   // User
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   
-  // Products
+  // Products - ✅ ADDED weight fields
   products: [{
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
     variantId: { type: String, default: null },
@@ -17,17 +17,21 @@ const orderSchema = new mongoose.Schema({
     originalPrice: { type: Number },
     discountPercentage: { type: Number, default: 0 },
     name: { type: String, required: true },
-    image: { type: String }
+    image: { type: String },
+    // ✅ ADD THESE WEIGHT FIELDS
+    weight: { type: Number, default: 0 },
+    weightUnit: { type: String, default: 'gram' }
   }],
   
-  // Shipping
+  // Shipping - WITH EMAIL FIELD
   shippingAddress: {
     street: { type: String, required: true },
     city: { type: String, required: true },
     state: { type: String, required: true },
     postalCode: { type: String, required: true },
     country: { type: String, required: true },
-    phone: { type: String, required: true }
+    phone: { type: String, required: true },
+    email: { type: String, required: true }
   },
   
   // Ward Info
@@ -38,24 +42,19 @@ const orderSchema = new mongoose.Schema({
   // Payment
   paymentMethod: { type: String, enum: ['cod', 'razorpay', 'card'], required: true },
   paymentId: { type: String },
-paymentStatus: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' },
+  paymentStatus: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' },
   paidAt: { type: Date },
-  // Add these inside your Order schema
-refundStatus: {
-  type: String,
-  enum: ['pending', 'completed', 'failed', 'not_applicable'],
-  default: null
-},
-refundMessage: {
-  type: String,
-  default: ''
-},
-refundedAt: {
-  type: Date,
-  default: null
-},
   
-  // ✅ ADD THIS MISSING FIELD
+  // Refund Info
+  refundStatus: {
+    type: String,
+    enum: ['pending', 'completed', 'failed', 'not_applicable'],
+    default: null
+  },
+  refundMessage: { type: String, default: '' },
+  refundedAt: { type: Date, default: null },
+  
+  // Razorpay
   razorpayOrderId: { type: String, index: true },
   
   // Amounts

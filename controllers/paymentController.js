@@ -4,6 +4,10 @@ import crypto from 'crypto';
 import Order from '../models/Order.js';
 import Payment from '../models/Payment.js';
 import Setting from '../models/Setting.js';
+// CORRECT
+import { sendOrderConfirmationEmail } from '../services/emailService.js';
+import { sendOrderConfirmationSMS } from '../services/smsService.js';
+import Product from '../models/productModel.js';
 
 // Get Razorpay instance from settings
 const getRazorpayInstance = async () => {
@@ -106,6 +110,27 @@ export const createRazorpayOrder = async (request, reply) => {
   }
 };
 
+// Helper: Update product stock
+const updateProductStock = async (products) => {
+  console.log(`\n📦 Updating stock for ${products.length} items...`);
+  
+  for (const item of products) {
+    if (item.variantId) {
+      const product = await Product.findById(item.product);
+      if (product && product.variants) {
+        const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
+        if (variantIndex !== -1) {
+          product.variants[variantIndex].stock -= item.quantity;
+          const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+          product.stock = totalStock;
+          await product.save();
+          console.log(`  ✅ Updated stock for ${item.name} variant: -${item.quantity}`);
+        }
+      }
+    }
+  }
+};
+
 // Verify Razorpay Payment
 export const verifyPayment = async (request, reply) => {
   try {
@@ -197,6 +222,39 @@ export const verifyPayment = async (request, reply) => {
     await order.save();
 
     console.log('✅ Payment verified for order:', order.orderId);
+
+    // ========== UPDATE PRODUCT STOCK AFTER PAYMENT ==========
+    try {
+      await updateProductStock(order.products);
+      console.log(`📦 Stock updated for order ${order.orderId}`);
+    } catch (stockError) {
+      console.error('Failed to update stock:', stockError);
+    }
+
+    // ========== SEND ORDER CONFIRMATION EMAIL & SMS AFTER PAYMENT ==========
+    const customerEmail = order.shippingAddress?.email;
+    const customerPhone = order.shippingAddress?.phone;
+    const customerName = order.shippingAddress?.name || 'Customer';
+
+    if (customerEmail) {
+      try {
+        await sendOrderConfirmationEmail(order, { email: customerEmail, name: customerName });
+        console.log(`📧 Order confirmation email sent to ${customerEmail} (Payment completed)`);
+      } catch (emailError) {
+        console.error('❌ Failed to send order confirmation email:', emailError);
+      }
+    } else {
+      console.warn(`⚠️ No email address found for order ${order.orderId} - email not sent`);
+    }
+
+    if (customerPhone) {
+      try {
+        await sendOrderConfirmationSMS(customerPhone, order);
+        console.log(`📱 Order confirmation SMS sent to ${customerPhone}`);
+      } catch (smsError) {
+        console.error('❌ Failed to send order confirmation SMS:', smsError);
+      }
+    }
 
     return reply.status(200).send({
       success: true,

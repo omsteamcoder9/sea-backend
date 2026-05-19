@@ -2,9 +2,20 @@ import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
 import Product from '../models/productModel.js';
 import Setting from '../models/Setting.js';
+import User from '../models/User.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { 
+  sendOrderConfirmationEmail, 
+  sendOrderStatusUpdateEmail, 
+  sendOrderCancellationEmail 
+} from '../services/emailService.js';
+import { 
+  sendOrderConfirmationSMS, 
+  sendOrderStatusSMS, 
+  sendOrderCancellationSMS 
+} from '../services/smsService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,7 +64,7 @@ const getStoreSettings = async () => {
   try {
     const settings = await Setting.getSettings();
     cachedSettings = {
-      siteName: settings.siteName || 'GLAINIC',
+      siteName: settings.siteName,
       contactEmail: settings.contactEmail || 'contact@example.com',
       contactNumber: settings.contactNumber || '+91 98765 43210',
       companyAddress: settings.companyAddress || 'Ganga Enterprise, 2nd Floor, Spencer Plaza, Anna Salai, Chennai',
@@ -66,7 +77,7 @@ const getStoreSettings = async () => {
   } catch (error) {
     console.error('Error fetching settings for receipt:', error);
     return {
-      siteName: 'GLAINIC',
+      siteName: '',
       contactEmail: 'contact@example.com',
       contactNumber: '+91 98765 43210',
       companyAddress: 'Ganga Enterprise, 2nd Floor, Spencer Plaza, Anna Salai, Chennai',
@@ -208,7 +219,7 @@ const geocodeAddress = async (address) => {
   }
 };
 
-// Helper: Update product stock - ONLY if variant is specified
+// Helper: Update product stock
 const updateProductStock = async (products) => {
   console.log(`\n📦 Starting stock update for ${products.length} items...`);
   
@@ -218,7 +229,6 @@ const updateProductStock = async (products) => {
     console.log(`  variantId: ${item.variantId || 'NOT PROVIDED'}`);
     console.log(`  variantName: ${item.variantName || 'NOT PROVIDED'}`);
     
-    // CRITICAL: Skip if no variant information
     if (!item.variantId && !item.variantName) {
       console.log(`❌ SKIPPED: No variant specified for "${item.name}". Stock NOT reduced.`);
       continue;
@@ -232,7 +242,6 @@ const updateProductStock = async (products) => {
     
     console.log(`✅ Product found: ${product.name}`);
     
-    // Check if product has variants
     if (!product.variants || product.variants.length === 0) {
       console.log(`⚠️ Product has no variants, but variant was specified. Stock NOT reduced.`);
       continue;
@@ -241,7 +250,6 @@ const updateProductStock = async (products) => {
     let variantFound = false;
     let variantIndex = -1;
     
-    // Try to find variant by ID
     if (item.variantId && item.variantId !== '' && item.variantId !== 'null') {
       variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
       if (variantIndex !== -1) {
@@ -250,7 +258,6 @@ const updateProductStock = async (products) => {
       }
     }
     
-    // Try to find variant by name (if not found by ID)
     if (!variantFound && item.variantName && item.variantName !== '') {
       variantIndex = product.variants.findIndex(v => v.variantName === item.variantName);
       if (variantIndex !== -1) {
@@ -264,14 +271,10 @@ const updateProductStock = async (products) => {
       continue;
     }
     
-    // Update variant stock
     const oldVariantStock = product.variants[variantIndex].stock;
     product.variants[variantIndex].stock -= item.quantity;
-    
-    // Recalculate total product stock
     const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
     product.stock = totalStock;
-    
     await product.save();
     
     console.log(`✅ Stock reduced!`);
@@ -283,6 +286,24 @@ const updateProductStock = async (products) => {
   console.log(`\n📦 Stock update completed\n`);
 };
 
+// Helper: Restore product stock
+const restoreProductStock = async (products) => {
+  for (const item of products) {
+    if (item.variantId) {
+      const product = await Product.findById(item.product);
+      if (product && product.variants) {
+        const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
+        if (variantIndex !== -1) {
+          product.variants[variantIndex].stock += item.quantity;
+          const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+          product.stock = totalStock;
+          await product.save();
+        }
+      }
+    }
+  }
+};
+
 // Helper: Validate delivery area
 const isDeliverableArea = (city) => {
   const deliverableCities = ['karaikudi', 'karaikudi.', 'karaikudi,', 'karaikudi '];
@@ -291,13 +312,12 @@ const isDeliverableArea = (city) => {
   );
 };
 
-// Main: Create Order
+// ========== CREATE ORDER ==========
 export const createOrder = async (request, reply) => {
   try {
     const userId = request.user.userId || request.user.id;
     const { shippingAddress, paymentMethod, paymentId } = request.body;
     
-    // Validate required fields
     if (!shippingAddress || !paymentMethod) {
       return reply.status(400).send({
         success: false,
@@ -305,7 +325,7 @@ export const createOrder = async (request, reply) => {
       });
     }
     
-    const requiredFields = ['street', 'city', 'state', 'postalCode', 'country', 'phone'];
+    const requiredFields = ['street', 'city', 'state', 'postalCode', 'country', 'phone', 'email'];
     for (const field of requiredFields) {
       if (!shippingAddress[field]) {
         return reply.status(400).send({
@@ -315,7 +335,6 @@ export const createOrder = async (request, reply) => {
       }
     }
     
-    // DELIVERY AREA VALIDATION
     if (!isDeliverableArea(shippingAddress.city)) {
       console.log(`❌ Order REJECTED: "${shippingAddress.city}" is not in delivery area`);
       return reply.status(400).send({
@@ -324,9 +343,7 @@ export const createOrder = async (request, reply) => {
       });
     }
     
-    // Get user's cart
-    const cart = await Cart.findOne({ user: userId })
-      .populate('items.product');
+    const cart = await Cart.findOne({ user: userId }).populate('items.product');
     
     if (!cart || cart.items.length === 0) {
       return reply.status(400).send({
@@ -339,7 +356,7 @@ export const createOrder = async (request, reply) => {
     console.log(`📦 Cart has ${cart.items.length} items`);
     console.log(`📍 Shipping address: "${shippingAddress.street}, ${shippingAddress.city}"`);
     
-    // ========== WARD MATCHING LOGIC - REQUIRED ==========
+    // Ward matching
     let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
 
     const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
@@ -363,7 +380,6 @@ export const createOrder = async (request, reply) => {
       }
     }
 
-    // REJECT order if no ward match found
     if (!wardInfo.wardId) {
       console.log(`❌ Order REJECTED: Street "${shippingAddress.street}" not found in Karaikudi wards`);
       return reply.status(400).send({
@@ -393,9 +409,11 @@ export const createOrder = async (request, reply) => {
       console.log(`  Cart variantId: ${item.variantId || 'NOT SET'}`);
       console.log(`  Cart variantName: ${item.variantName || 'NOT SET'}`);
       
-      // Check if product has variants
+      // Get weight from cart item
+      let itemWeight = item.weight || 0;
+      let itemWeightUnit = item.weightUnit || 'gram';
+      
       if (product.variants && product.variants.length > 0) {
-        // Product HAS variants - variant MUST be specified
         const hasVariant = (item.variantId && item.variantId !== '' && item.variantId !== 'null') || 
                           (item.variantName && item.variantName !== '');
         
@@ -407,7 +425,6 @@ export const createOrder = async (request, reply) => {
           });
         }
         
-        // Find the variant to check stock
         let variant = null;
         if (item.variantId && item.variantId !== '' && item.variantId !== 'null') {
           variant = product.variants.find(v => v._id.toString() === item.variantId);
@@ -423,7 +440,6 @@ export const createOrder = async (request, reply) => {
           });
         }
         
-        // Check variant stock
         if (variant.stock < item.quantity) {
           console.log(`❌ ERROR: Insufficient stock for ${product.name} - ${variant.variantName}`);
           return reply.status(400).send({
@@ -432,10 +448,15 @@ export const createOrder = async (request, reply) => {
           });
         }
         
-        console.log(`✅ Variant found: ${variant.variantName}, Stock: ${variant.stock}`);
+        // Get weight from variant if not already set
+        if (!itemWeight && variant.weight) {
+          itemWeight = variant.weight;
+          itemWeightUnit = variant.weightUnit || 'gram';
+        }
+        
+        console.log(`✅ Variant found: ${variant.variantName}, Stock: ${variant.stock}, Weight: ${itemWeight} ${itemWeightUnit}`);
         
       } else {
-        // Product has NO variants - check product stock directly
         if (product.stock < item.quantity) {
           console.log(`❌ ERROR: Insufficient stock for ${product.name}`);
           return reply.status(400).send({
@@ -460,6 +481,7 @@ export const createOrder = async (request, reply) => {
         discountPercentage = Math.round(((originalPrice - itemPrice) / originalPrice) * 100);
       }
       
+      // ✅ ADD WEIGHT to products array
       products.push({
         product: product._id,
         variantId: item.variantId || null,
@@ -469,13 +491,14 @@ export const createOrder = async (request, reply) => {
         originalPrice: originalPrice,
         discountPercentage: discountPercentage,
         name: product.name,
-        image: productImage
+        image: productImage,
+        weight: itemWeight,
+        weightUnit: itemWeightUnit
       });
       
-      console.log(`  ✅ Added to order: ${item.quantity} x ${itemPrice} = ${itemTotal}`);
+      console.log(`  ✅ Added to order: ${item.quantity} x ${itemPrice} = ${itemTotal} (Weight: ${itemWeight} ${itemWeightUnit})`);
     }
     
-    // Calculate totals
     const shippingFee = 0;
     const taxAmount = Math.round((totalAmount * 5) / 100);
     const discountAmount = products.reduce((sum, item) => {
@@ -491,7 +514,6 @@ export const createOrder = async (request, reply) => {
     console.log(`   Tax (5%): ${taxAmount}`);
     console.log(`   Final: ${finalAmount}`);
     
-    // Create order
     const order = await Order.create({
       user: userId,
       products,
@@ -528,6 +550,30 @@ export const createOrder = async (request, reply) => {
     
     console.log(`🗑️ Cart cleared for user ${userId}\n`);
     
+    // ========== SEND NOTIFICATIONS - ONLY FOR COD ==========
+    if (paymentMethod === 'cod') {
+      const customerEmail = shippingAddress.email;
+      const customerName = shippingAddress.name || 'Customer';
+      const customerPhone = shippingAddress.phone;
+      
+      try {
+        await sendOrderConfirmationEmail(order, { email: customerEmail, name: customerName });
+        console.log(`📧 Order confirmation email sent to ${customerEmail} (COD)`);
+      } catch (emailError) {
+        console.error('Failed to send order confirmation email:', emailError);
+      }
+      
+      try {
+        if (customerPhone) {
+          await sendOrderConfirmationSMS(customerPhone, order);
+          console.log(`📱 Order confirmation SMS sent to ${customerPhone} (COD)`);
+        }
+      } catch (smsError) {
+        console.error('Failed to send order confirmation SMS:', smsError);
+      }
+    }
+    // For Razorpay orders - NO email here, will be sent after payment success
+    
     return reply.status(201).send({
       success: true,
       message: 'Order created successfully',
@@ -560,6 +606,119 @@ export const createOrder = async (request, reply) => {
     });
   }
 };
+
+// ========== UPDATE ORDER PAYMENT SUCCESS (RAZORPAY WEBHOOK) ==========
+export const updateOrderPaymentSuccess = async (request, reply) => {
+  try {
+    const { orderId, paymentId } = request.body;
+
+    console.log('🔔 Payment success webhook received:', { orderId, paymentId });
+
+    if (!orderId || !paymentId) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Order ID and Payment ID are required'
+      });
+    }
+
+    const order = await Order.findOne({ orderId });
+
+    if (!order) {
+      console.error(`❌ Order not found: ${orderId}`);
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    console.log(`✅ Order found: ${order.orderId}, current paymentStatus: ${order.paymentStatus}`);
+
+    if (order.paymentStatus === 'completed') {
+      console.log(`ℹ️ Order ${order.orderId} already has payment completed`);
+      return reply.status(200).send({
+        success: true,
+        message: 'Order payment already completed',
+        order
+      });
+    }
+
+    // Update stock for Razorpay payments
+    if (order.paymentMethod === 'razorpay') {
+      console.log(`📦 Updating stock for order ${order.orderId}`);
+      for (const item of order.products) {
+        if (item.variantId) {
+          const product = await Product.findById(item.product);
+          if (product && product.variants) {
+            const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
+            if (variantIndex !== -1) {
+              product.variants[variantIndex].stock -= item.quantity;
+              const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+              product.stock = totalStock;
+              await product.save();
+              console.log(`  ✅ Updated stock for ${item.name} variant: -${item.quantity}`);
+            }
+          }
+        }
+      }
+    }
+
+    // Update order status
+    order.paymentStatus = 'completed';
+    order.orderStatus = 'confirmed';
+    order.paymentId = paymentId;
+    order.paidAt = new Date();
+    await order.save();
+
+    console.log(`✅ Order ${order.orderId} updated: paymentStatus=completed, orderStatus=confirmed`);
+
+    // ========== SEND ORDER CONFIRMATION EMAIL & SMS (AFTER PAYMENT SUCCESS) ==========
+    const customerEmail = order.shippingAddress?.email;
+    const customerPhone = order.shippingAddress?.phone;
+    const customerName = order.shippingAddress?.name || order.user?.name || 'Customer';
+
+    if (customerEmail) {
+      try {
+        await sendOrderConfirmationEmail(order, { email: customerEmail, name: customerName });
+        console.log(`📧 Order confirmation email sent to ${customerEmail} (Payment completed)`);
+      } catch (emailError) {
+        console.error('❌ Failed to send order confirmation email:', emailError);
+      }
+    } else {
+      console.warn(`⚠️ No email address found for order ${order.orderId} - email not sent`);
+    }
+
+    if (customerPhone) {
+      try {
+        await sendOrderConfirmationSMS(customerPhone, order);
+        console.log(`📱 Order confirmation SMS sent to ${customerPhone}`);
+      } catch (smsError) {
+        console.error('❌ Failed to send order confirmation SMS:', smsError);
+      }
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Order payment status updated successfully',
+      order: {
+        _id: order._id,
+        orderId: order.orderId,
+        orderStatus: order.orderStatus,
+        paymentStatus: order.paymentStatus,
+        paymentId: order.paymentId,
+        paidAt: order.paidAt
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Update order payment success error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message || 'Internal server error'
+    });
+  }
+};
+
+// ========== OTHER FUNCTIONS ==========
 
 // Get user's orders
 export const getUserOrders = async (request, reply) => {
@@ -597,10 +756,9 @@ export const getOrderById = async (request, reply) => {
   }
 };
 
-// ADMIN: Get all orders (with optional filters)
+// ADMIN: Get all orders
 export const getAllOrders = async (request, reply) => {
   try {
-    // Check if user is admin
     if (request.user.role !== 'admin') {
       return reply.status(403).send({
         success: false,
@@ -610,16 +768,13 @@ export const getAllOrders = async (request, reply) => {
 
     const { status, paymentStatus, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = request.query;
     
-    // Build filter
     const filter = {};
     if (status) filter.orderStatus = status;
     if (paymentStatus) filter.paymentStatus = paymentStatus;
     
-    // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
     
-    // Get orders with user population
     const orders = await Order.find(filter)
       .populate('user', 'name phone')
       .sort(sort)
@@ -711,9 +866,9 @@ export const updateOrderStatus = async (request, reply) => {
       });
     }
     
-    // Update fields if provided
+    const oldStatus = order.orderStatus;
+    
     if (orderStatus) {
-      // Handle special status transitions
       if (orderStatus === 'delivered' && order.orderStatus !== 'delivered') {
         order.deliveredAt = new Date();
       }
@@ -721,24 +876,7 @@ export const updateOrderStatus = async (request, reply) => {
       if (orderStatus === 'cancelled' && order.orderStatus !== 'cancelled') {
         order.cancelledAt = new Date();
         if (cancellationReason) order.cancellationReason = cancellationReason;
-        
-        // Restore stock for cancelled orders
-        console.log(`📦 Restoring stock for cancelled order ${order.orderId}...`);
-        for (const item of order.products) {
-          if (item.variantId) {
-            const product = await Product.findById(item.product);
-            if (product && product.variants) {
-              const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
-              if (variantIndex !== -1) {
-                product.variants[variantIndex].stock += item.quantity;
-                const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-                product.stock = totalStock;
-                await product.save();
-                console.log(`  ✅ Restored ${item.quantity} stock for ${item.name} variant`);
-              }
-            }
-          }
-        }
+        await restoreProductStock(order.products);
       }
       
       order.orderStatus = orderStatus;
@@ -754,6 +892,26 @@ export const updateOrderStatus = async (request, reply) => {
     await order.save();
     
     console.log(`✅ Admin updated order ${order.orderId}: status=${order.orderStatus}, payment=${order.paymentStatus}`);
+    
+    if (orderStatus && oldStatus !== orderStatus) {
+      const customerEmail = order.shippingAddress?.email;
+      const customerName = order.shippingAddress?.name || 'Customer';
+      const customerPhone = order.shippingAddress?.phone;
+      
+      try {
+        await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus);
+      } catch (emailError) {
+        console.error('Failed to send status update email:', emailError);
+      }
+      
+      try {
+        if (customerPhone) {
+          await sendOrderStatusSMS(customerPhone, order, orderStatus);
+        }
+      } catch (smsError) {
+        console.error('Failed to send status update SMS:', smsError);
+      }
+    }
     
     return reply.status(200).send({
       success: true,
@@ -773,7 +931,7 @@ export const updateOrderStatus = async (request, reply) => {
   }
 };
 
-// ADMIN: Get single order (full details with populations)
+// ADMIN: Get single order
 export const getAdminOrderById = async (request, reply) => {
   try {
     if (request.user.role !== 'admin') {
@@ -806,11 +964,7 @@ export const getAdminOrderById = async (request, reply) => {
   }
 };
 
-// ========== PRINT RECEIPT FUNCTIONS ==========
-
-// @desc    Print order receipt (JSON)
-// @route   GET /api/orders/:id/receipt
-// @access  Private
+// Print order receipt (JSON) - ✅ ADDED weight display
 export const printOrderReceipt = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -828,7 +982,6 @@ export const printOrderReceipt = async (request, reply) => {
       });
     }
 
-    // Authorization check
     const isOrderOwner = order.user && order.user._id.toString() === userId;
     if (!isOrderOwner && !isAdmin) {
       return reply.status(403).send({
@@ -837,10 +990,8 @@ export const printOrderReceipt = async (request, reply) => {
       });
     }
 
-    // Get dynamic store settings
     const storeSettings = await getStoreSettings();
 
-    // Format receipt data
     const receiptData = {
       receiptNumber: order._id.toString(),
       orderNumber: order.orderId || order._id.toString(),
@@ -861,7 +1012,10 @@ export const printOrderReceipt = async (request, reply) => {
         quantity: item.quantity,
         price: item.price,
         total: (item.quantity * item.price).toFixed(2),
-        variantName: item.variantName
+        variantName: item.variantName,
+        // ✅ ADD WEIGHT
+        weight: item.weight || 0,
+        weightUnit: item.weightUnit || 'gram'
       })),
       pricing: {
         subtotal: order.totalAmount || 0,
@@ -876,7 +1030,6 @@ export const printOrderReceipt = async (request, reply) => {
       }
     };
 
-    // Return JSON
     return reply.status(200).send({
       success: true,
       message: 'Receipt generated successfully',
@@ -893,9 +1046,7 @@ export const printOrderReceipt = async (request, reply) => {
   }
 };
 
-// @desc    Print order receipt PDF
-// @route   GET /api/orders/:id/receipt/pdf
-// @access  Private
+// Print order receipt PDF - ✅ ADDED weight column
 export const printOrderReceiptPDF = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -913,7 +1064,6 @@ export const printOrderReceiptPDF = async (request, reply) => {
       });
     }
 
-    // Authorization check
     const isOrderOwner = order.user && order.user._id.toString() === userId;
     if (!isOrderOwner && !isAdmin) {
       return reply.status(403).send({
@@ -922,10 +1072,7 @@ export const printOrderReceiptPDF = async (request, reply) => {
       });
     }
 
-    // Get dynamic store settings
     const storeSettings = await getStoreSettings();
-
-    // Format receipt data
     const receiptData = {
       receiptNumber: order._id.toString(),
       orderNumber: order.orderId || order._id.toString(),
@@ -945,7 +1092,10 @@ export const printOrderReceiptPDF = async (request, reply) => {
         quantity: item.quantity,
         price: item.price,
         total: (item.quantity * item.price).toFixed(2),
-        variantName: item.variantName
+        variantName: item.variantName,
+        // ✅ ADD WEIGHT
+        weight: item.weight || 0,
+        weightUnit: item.weightUnit || 'gram'
       })),
       pricing: {
         subtotal: order.totalAmount || 0,
@@ -959,14 +1109,10 @@ export const printOrderReceiptPDF = async (request, reply) => {
       }
     };
 
-    // Set headers for PDF download
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="receipt-${order.orderId}.pdf"`);
     
-    // Generate PDF buffer with dynamic store info
     const pdfBuffer = await generateReceiptPDFBuffer(receiptData);
-    
-    // Send PDF buffer
     return reply.status(200).send(pdfBuffer);
 
   } catch (error) {
@@ -979,7 +1125,7 @@ export const printOrderReceiptPDF = async (request, reply) => {
   }
 };
 
-// Helper function to generate PDF buffer with dynamic store info
+// Helper function to generate PDF buffer - ✅ ADDED weight column in table
 const generateReceiptPDFBuffer = async (receiptData) => {
   return new Promise(async (resolve, reject) => {
     try {
@@ -993,7 +1139,6 @@ const generateReceiptPDFBuffer = async (receiptData) => {
         resolve(pdfData);
       });
 
-      // Add PDF content with dynamic store info
       addPDFHeader(doc, receiptData);
       addPDFCustomerInfo(doc, receiptData);
       addPDFItemsTable(doc, receiptData);
@@ -1008,7 +1153,7 @@ const generateReceiptPDFBuffer = async (receiptData) => {
   });
 };
 
-// PDF generation helper functions with dynamic store info
+// PDF generation helper functions
 const addPDFHeader = (doc, data) => {
   doc.fontSize(20)
      .font('Helvetica-Bold')
@@ -1027,7 +1172,6 @@ const addPDFCustomerInfo = (doc, data) => {
   const startX = 50;
   const startY = doc.y;
   
-  // FROM section - Dynamic store info
   doc.fontSize(10)
     .font('Helvetica-Bold')
     .fillColor('#000')
@@ -1037,7 +1181,6 @@ const addPDFCustomerInfo = (doc, data) => {
   doc.font('Helvetica').fontSize(9);
   doc.text(data.store.name, startX);
   
-  // Split address into multiple lines if needed
   const addressLines = data.store.address.split(',').map(line => line.trim());
   for (const line of addressLines) {
     doc.text(line, startX);
@@ -1047,7 +1190,6 @@ const addPDFCustomerInfo = (doc, data) => {
 
   let fromBottomY = doc.y;
   
-  // ORDER section
   const orderColumnX = startX + 200;
   
   doc.fontSize(12)
@@ -1063,14 +1205,11 @@ const addPDFCustomerInfo = (doc, data) => {
   
   orderY += 15;
   doc.text(`Date: ${new Date(data.date).toLocaleDateString()}`, orderColumnX, orderY);
-  
   orderY += 15;
   doc.text(`Payment: ${data.payment.method}`, orderColumnX, orderY);
-  
   orderY += 15;
   doc.text(`Status: ${data.payment.status}`, orderColumnX, orderY);
   
-  // TO section
   const toColumnX = startX + 390;
   
   doc.fontSize(10)
@@ -1105,25 +1244,26 @@ const addPDFCustomerInfo = (doc, data) => {
       doc.text(`Phone: ${data.shippingAddress.phone}`, toColumnX, toY, { width: 150 });
       toY += 15;
     }
+    if (data.shippingAddress.email) {
+      doc.text(`Email: ${data.shippingAddress.email}`, toColumnX, toY, { width: 150 });
+      toY += 15;
+    }
   }
   
-  // Set cursor to bottom of tallest column
-  const maxHeight = Math.max(
-    fromBottomY - startY,
-    orderY - startY,
-    toY - startY
-  );
+  const maxHeight = Math.max(fromBottomY - startY, orderY - startY, toY - startY);
   doc.y = startY + maxHeight + 20;
 };
 
+// ✅ UPDATED PDF items table with WEIGHT column
 const addPDFItemsTable = (doc, data) => {
   const tableTop = doc.y + 10;
   
-  // Table header
+  // Table header - ADDED WEIGHT column
   doc.font('Helvetica-Bold')
      .fontSize(9)
      .text('PRODUCT', 50, tableTop)
-     .text('QTY', 250, tableTop)
+     .text('QTY', 200, tableTop)
+     .text('WEIGHT', 260, tableTop)
      .text('PRICE', 350, tableTop)
      .text('TOTAL', 450, tableTop);
   
@@ -1134,17 +1274,20 @@ const addPDFItemsTable = (doc, data) => {
   
   let yPosition = tableTop + 25;
   
-  // Table rows
+  // Table rows with weight
   data.items.forEach((item) => {
     if (yPosition > 700) {
       doc.addPage();
       yPosition = 50;
     }
     
+    const weightDisplay = item.weight && item.weight > 0 ? `${item.weight}${item.weightUnit === 'gram' ? 'g' : item.weightUnit === 'kg' ? 'kg' : item.weightUnit}` : '-';
+    
     doc.font('Helvetica')
        .fontSize(8)
-       .text(item.name, 50, yPosition, { width: 180 })
-       .text(item.quantity.toString(), 250, yPosition)
+       .text(item.name, 50, yPosition, { width: 140 })
+       .text(item.quantity.toString(), 200, yPosition)
+       .text(weightDisplay, 260, yPosition)
        .text(`${item.price}`, 350, yPosition)
        .text(`${item.total}`, 450, yPosition);
     
@@ -1180,11 +1323,7 @@ const addPDFFooter = (doc) => {
      .text('Thank you for your business!', { align: 'center' });
 };
 
-// ========== ORDER STATUS FUNCTIONS ==========
-
-// @desc    Update order status by orderId (not MongoDB _id)
-// @route   PUT /api/orders/order-status/:orderId
-// @access  Private/Admin
+// Update order status by orderId
 export const updateOrderStatusByOrderId = async (request, reply) => {
   try {
     const { orderStatus } = request.body;
@@ -1197,11 +1336,7 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
       });
     }
 
-    console.log('Updating order status for orderId:', orderId);
-
-    // Find order by orderId field
-    const order = await Order.findOne({ orderId: orderId })
-      .populate('user', 'name ');
+    const order = await Order.findOne({ orderId: orderId });
     if (!order) {
       return reply.status(404).send({
         success: false,
@@ -1212,7 +1347,6 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
     const oldStatus = order.orderStatus;
     order.orderStatus = orderStatus;
 
-    // Handle delivered orders
     if (orderStatus === 'delivered') {
       order.deliveredAt = new Date();
       if (order.paymentMethod === 'cod') {
@@ -1220,27 +1354,30 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
       }
     }
 
-    // Handle cancelled orders
     if (orderStatus === 'cancelled' && oldStatus !== 'cancelled') {
       order.cancelledAt = new Date();
-      // Restore stock
-      for (const item of order.products) {
-        if (item.variantId) {
-          const product = await Product.findById(item.product);
-          if (product && product.variants) {
-            const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
-            if (variantIndex !== -1) {
-              product.variants[variantIndex].stock += item.quantity;
-              const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-              product.stock = totalStock;
-              await product.save();
-            }
-          }
-        }
-      }
+      await restoreProductStock(order.products);
     }
 
     await order.save();
+
+    const customerEmail = order.shippingAddress?.email;
+    const customerName = order.shippingAddress?.name || 'Customer';
+    const customerPhone = order.shippingAddress?.phone;
+    
+    try {
+      await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus);
+    } catch (emailError) {
+      console.error('Failed to send status update email:', emailError);
+    }
+    
+    try {
+      if (customerPhone) {
+        await sendOrderStatusSMS(customerPhone, order, orderStatus);
+      }
+    } catch (smsError) {
+      console.error('Failed to send status update SMS:', smsError);
+    }
 
     return reply.status(200).send({
       success: true,
@@ -1262,6 +1399,7 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
   }
 };
 
+// Cancel order
 export const cancelOrder = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -1278,7 +1416,6 @@ export const cancelOrder = async (request, reply) => {
       });
     }
 
-    // Check authorization
     const isOrderOwner = order.user && order.user.toString() === userId;
     if (!isOrderOwner && !isAdmin) {
       return reply.status(403).send({
@@ -1287,7 +1424,6 @@ export const cancelOrder = async (request, reply) => {
       });
     }
 
-    // Check if order can be cancelled
     if (order.orderStatus === 'cancelled') {
       return reply.status(400).send({
         success: false,
@@ -1303,35 +1439,32 @@ export const cancelOrder = async (request, reply) => {
       });
     }
 
-    // ⚠️ REMOVE THE AUTOMATIC REFUND CODE - DON'T PROCESS REFUND HERE
-    
-    // Update order to cancelled (ONLY - no refund)
     order.orderStatus = 'cancelled';
     order.cancelledAt = new Date();
     if (cancellationReason) {
       order.cancellationReason = cancellationReason;
     }
-    
-    // DO NOT set refundStatus or process refund here
-    // Refund will be handled manually by admin via the Refund button
 
-    // Restore product stock
-    for (const item of order.products) {
-      if (item.variantId) {
-        const product = await Product.findById(item.product);
-        if (product && product.variants) {
-          const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
-          if (variantIndex !== -1) {
-            product.variants[variantIndex].stock += item.quantity;
-            const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-            product.stock = totalStock;
-            await product.save();
-          }
-        }
-      }
-    }
-
+    await restoreProductStock(order.products);
     await order.save();
+
+    const customerEmail = order.shippingAddress?.email;
+    const customerName = order.shippingAddress?.name || 'Customer';
+    const customerPhone = order.shippingAddress?.phone;
+    
+    try {
+      await sendOrderCancellationEmail(order, { email: customerEmail, name: customerName }, cancellationReason, isAdmin ? 'admin' : 'user');
+    } catch (emailError) {
+      console.error('Failed to send cancellation email:', emailError);
+    }
+    
+    try {
+      if (customerPhone) {
+        await sendOrderCancellationSMS(customerPhone, order, cancellationReason);
+      }
+    } catch (smsError) {
+      console.error('Failed to send cancellation SMS:', smsError);
+    }
 
     return reply.status(200).send({
       success: true,
@@ -1355,11 +1488,7 @@ export const cancelOrder = async (request, reply) => {
   }
 };
 
-// ========== DELETE ORDER ==========
-
-// @desc    Delete order (Admin only)
-// @route   DELETE /api/orders/:id
-// @access  Private/Admin
+// Delete order (Admin only)
 export const deleteOrder = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -1380,7 +1509,6 @@ export const deleteOrder = async (request, reply) => {
       });
     }
 
-    // Optional: Prevent deletion of delivered orders
     if (order.orderStatus === 'delivered') {
       return reply.status(400).send({
         success: false,
@@ -1389,7 +1517,6 @@ export const deleteOrder = async (request, reply) => {
     }
 
     await order.deleteOne();
-
     console.log(`✅ Admin deleted order ${order.orderId}`);
 
     return reply.status(200).send({
@@ -1406,75 +1533,7 @@ export const deleteOrder = async (request, reply) => {
   }
 };
 
-// ========== PAYMENT WEBHOOK FUNCTIONS ==========
-
-// @desc    Update order payment success (for Razorpay verification)
-// @route   PUT /api/orders/payment-success
-// @access  Public (called by Razorpay webhook)
-export const updateOrderPaymentSuccess = async (request, reply) => {
-  try {
-    const { orderId, paymentId } = request.body;
-
-    if (!orderId || !paymentId) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Order ID and Payment ID are required'
-      });
-    }
-
-    // Find order by orderId field
-    const order = await Order.findOne({ orderId });
-
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-
-    // Update product stock for Razorpay payments
-    if (order.paymentMethod === 'razorpay' && order.paymentStatus !== 'completed') {
-      for (const item of order.products) {
-        if (item.variantId) {
-          const product = await Product.findById(item.product);
-          if (product && product.variants) {
-            const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
-            if (variantIndex !== -1) {
-              product.variants[variantIndex].stock -= item.quantity;
-              const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-              product.stock = totalStock;
-              await product.save();
-            }
-          }
-        }
-      }
-    }
-
-    // Update order status
-    order.paymentStatus = 'completed';
-    order.orderStatus = 'confirmed';
-    order.paymentId = paymentId;
-    order.paidAt = new Date();
-    await order.save();
-
-    return reply.status(200).send({
-      success: true,
-      message: 'Order payment status updated successfully',
-      order
-    });
-
-  } catch (error) {
-    console.error('Update order payment success error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
-// @desc    Update order payment failed
-// @route   PUT /api/orders/payment-failed
-// @access  Public (called by Razorpay webhook)
+// Update order payment failed
 export const updateOrderPaymentFailed = async (request, reply) => {
   try {
     const { orderId } = request.body;
@@ -1514,9 +1573,7 @@ export const updateOrderPaymentFailed = async (request, reply) => {
   }
 };
 
-// @desc    Process refund for an order (Admin only)
-// @route   POST /api/admin/orders/:id/refund
-// @access  Private/Admin
+// Process refund (Admin only)
 export const processRefund = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -1538,20 +1595,13 @@ export const processRefund = async (request, reply) => {
       });
     }
     
-    // Check if order is already refunded
     if (order.refundStatus === 'completed') {
       return reply.status(400).send({
         success: false,
-        message: 'This order has already been refunded',
-        refundDetails: {
-          refundId: order.refundMessage,
-          refundedAt: order.refundedAt,
-          refundStatus: order.refundStatus
-        }
+        message: 'This order has already been refunded'
       });
     }
     
-    // Check if order is eligible for refund
     if (order.paymentMethod !== 'razorpay') {
       return reply.status(400).send({
         success: false,
@@ -1577,11 +1627,10 @@ export const processRefund = async (request, reply) => {
     const refundAmountInPaise = Math.round(refundAmount * 100);
     
     console.log(`💰 Processing refund for order ${order.orderId}`);
-    console.log(`   Amount: ₹${refundAmount}`);
+    console.log(`   Amount: ${refundAmount}`);
     console.log(`   Payment ID: ${order.paymentId}`);
     
     try {
-      // Get Razorpay keys from database settings
       const settings = await getStoreSettings();
       
       if (!settings.razorpayKeyId || !settings.razorpayKeySecret) {
@@ -1603,11 +1652,10 @@ export const processRefund = async (request, reply) => {
         }
       });
       
-      // Update order with refund information
       order.refundStatus = 'completed';
       order.refundMessage = `Refund processed. Refund ID: ${refund.id}. Reason: ${reason || 'Admin initiated refund'}`;
       order.refundedAt = new Date();
-      order.paymentStatus = 'refunded';  // ← UPDATE paymentStatus as well
+      order.paymentStatus = 'refunded';
       await order.save();
       
       console.log(`✅ Refund processed successfully. Refund ID: ${refund.id}`);
@@ -1626,10 +1674,9 @@ export const processRefund = async (request, reply) => {
     } catch (refundError) {
       console.error('❌ Refund failed:', refundError);
       
-      // Check if payment is already refunded on Razorpay
       if (refundError.error && refundError.error.description === 'The payment has been fully refunded already') {
         order.refundStatus = 'completed';
-        order.refundMessage = `Payment already refunded on Razorpay. Original error: ${refundError.error.description}`;
+        order.refundMessage = `Payment already refunded on Razorpay`;
         order.refundedAt = new Date();
         order.paymentStatus = 'refunded';
         await order.save();

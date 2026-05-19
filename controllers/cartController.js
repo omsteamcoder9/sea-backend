@@ -28,7 +28,7 @@ const getProductDetails = async (productId, variantId) => {
   return { price, originalPrice, variantName, productName, productImage };
 };
 
-// Add to Cart
+
 export const addToCart = async (request, reply) => {
   try {
     console.log('\n=== ADD TO CART DEBUG START ===');
@@ -36,14 +36,12 @@ export const addToCart = async (request, reply) => {
     const { productId, quantity = 1, variantId, guestId } = request.body;
     console.log('Request body:', { productId, quantity, variantId, guestId });
     
-    // Get user ID if authenticated
     let userId = null;
     if (request.user) {
       userId = request.user.id || request.user.userId || request.user._id;
       console.log('Authenticated userId:', userId);
     }
     
-    // Validate product
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       return reply.status(400).send({
         success: false,
@@ -59,31 +57,23 @@ export const addToCart = async (request, reply) => {
       });
     }
     console.log('Product found:', product.name);
-    console.log('Product images:', product.images);
     
     let selectedPrice = product.basePrice;
     let availableStock = product.stock;
     let variantName = '';
     let variantImage = '';
     let selectedVariant = null;
+    // ✅ ADD WEIGHT VARIABLES
+    let variantWeight = 0;
+    let variantWeightUnit = 'gram';
     
-    // If variant is selected, get variant details
     if (variantId && variantId !== '' && variantId !== 'undefined') {
       console.log('Looking for variant with ID:', variantId);
       
-      // Try to find variant by _id
-      selectedVariant = product.variants?.find(v => 
-        v._id?.toString() === variantId
-      );
-      
-      // If not found, try by variantName
+      selectedVariant = product.variants?.find(v => v._id?.toString() === variantId);
       if (!selectedVariant) {
-        selectedVariant = product.variants?.find(v => 
-          v.variantName === variantId
-        );
+        selectedVariant = product.variants?.find(v => v.variantName === variantId);
       }
-      
-      // If still not found, try by index
       if (!selectedVariant) {
         const variantIndex = parseInt(variantId);
         if (!isNaN(variantIndex) && product.variants[variantIndex]) {
@@ -96,13 +86,15 @@ export const addToCart = async (request, reply) => {
         availableStock = selectedVariant.stock;
         variantName = selectedVariant.variantName || selectedVariant.name || '';
         variantImage = selectedVariant.images?.[0]?.image || '';
-        console.log('Variant found - Name:', variantName, 'Price:', selectedPrice, 'Stock:', availableStock, 'Image:', variantImage);
+        // ✅ ADD WEIGHT
+        variantWeight = selectedVariant.weight || 0;
+        variantWeightUnit = selectedVariant.weightUnit || 'gram';
+        console.log('Variant found - Name:', variantName, 'Price:', selectedPrice, 'Stock:', availableStock, 'Weight:', variantWeight, variantWeightUnit);
       } else {
         console.log('⚠️ Variant NOT found for ID:', variantId);
       }
     }
     
-    // Check stock
     if (availableStock < quantity) {
       return reply.status(400).send({
         success: false,
@@ -110,9 +102,7 @@ export const addToCart = async (request, reply) => {
       });
     }
     
-    // Find or create cart
     let cart;
-    
     if (userId) {
       cart = await Cart.findOne({ user: userId });
     } else if (guestId) {
@@ -130,28 +120,18 @@ export const addToCart = async (request, reply) => {
       console.log('Found existing cart:', cart._id);
     }
     
-    // ✅ FIXED: Determine the product image correctly
     let finalProductImage = '';
-    
-    // Priority 1: Variant image
     if (variantImage) {
       finalProductImage = variantImage;
       console.log('Using variant image:', finalProductImage);
-    }
-    // Priority 2: Main product image
-    else if (product.images && product.images.length > 0 && product.images[0].image) {
+    } else if (product.images && product.images.length > 0 && product.images[0].image) {
       finalProductImage = product.images[0].image;
       console.log('Using main product image:', finalProductImage);
-    }
-    // Priority 3: OG image as fallback
-    else if (product.ogImage) {
+    } else if (product.ogImage) {
       finalProductImage = product.ogImage;
       console.log('Using OG image:', finalProductImage);
     }
     
-    console.log('Final product image being saved:', finalProductImage);
-    
-    // Check if item already exists in cart
     const existingItemIndex = cart.items.findIndex(item => {
       const sameProduct = item.product.toString() === productId;
       const sameVariant = item.variantId === (variantId || '');
@@ -159,23 +139,24 @@ export const addToCart = async (request, reply) => {
     });
     
     if (existingItemIndex > -1) {
-      // Update existing item
       console.log('Updating existing item at index:', existingItemIndex);
       cart.items[existingItemIndex].quantity = quantity;
       cart.items[existingItemIndex].price = selectedPrice;
-      // ✅ Always update productImage when updating
       if (finalProductImage) {
         cart.items[existingItemIndex].productImage = finalProductImage;
       }
       if (variantName) {
         cart.items[existingItemIndex].variantName = variantName;
       }
-      // ✅ Also update productName if needed
       if (product.name) {
         cart.items[existingItemIndex].productName = product.name;
       }
+      // ✅ ADD WEIGHT TO EXISTING ITEM
+      if (selectedVariant) {
+        cart.items[existingItemIndex].weight = variantWeight;
+        cart.items[existingItemIndex].weightUnit = variantWeightUnit;
+      }
     } else {
-      // Add new item
       console.log('Adding new item to cart');
       const newItem = {
         product: productId,
@@ -185,29 +166,26 @@ export const addToCart = async (request, reply) => {
         variantId: variantId || '',
         variantName: variantName,
         productName: product.name,
-        productImage: finalProductImage  // ✅ Ensure this is saved
+        productImage: finalProductImage,
+        // ✅ ADD WEIGHT TO NEW ITEM
+        weight: variantWeight,
+        weightUnit: variantWeightUnit
       };
       console.log('New item being added:', newItem);
       cart.items.push(newItem);
     }
     
-    // Recalculate totals
     cart.totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
     cart.totalPrice = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     cart.totalOriginalPrice = cart.items.reduce((sum, item) => sum + ((item.originalPrice || item.price) * item.quantity), 0);
     cart.totalSavings = cart.totalOriginalPrice - cart.totalPrice;
     
-    // Save cart
     await cart.save();
     console.log('Cart saved with', cart.items.length, 'items');
-    console.log('Saved cart items:', JSON.stringify(cart.items, null, 2));
     
-    // Populate product details
     await cart.populate('items.product', 'name basePrice images slug stock seller variants');
     
-    // Enrich cart items with variant images after population
     for (const item of cart.items) {
-      // If item has variantId but no productImage, try to get from populated product variants
       if (item.variantId && !item.productImage && item.product) {
         const populatedProduct = item.product;
         if (populatedProduct.variants && populatedProduct.variants.length > 0) {
@@ -216,7 +194,6 @@ export const addToCart = async (request, reply) => {
           );
           if (variant && variant.images && variant.images.length > 0) {
             item.productImage = variant.images[0].image;
-            console.log(`✅ Enriched cart item ${item._id} with variant image:`, item.productImage);
           }
         }
       }
@@ -233,7 +210,6 @@ export const addToCart = async (request, reply) => {
   } catch (error) {
     console.error('!!! ADD TO CART ERROR !!!');
     console.error('Error message:', error.message);
-    console.error('Full error:', error);
     return reply.status(500).send({
       success: false,
       message: error.message
