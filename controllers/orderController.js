@@ -533,6 +533,28 @@ export const createOrder = async (request, reply) => {
     });
     
     console.log(`\n✅ Order created: ${order.orderId} (sNo: ${order.sNo})`);
+        // ========== AUTO-ASSIGN DELIVERY BOY BASED ON WARD ==========
+    if (order.wardId) {
+      try {
+        const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
+        const deliveryBoy = await DeliveryBoy.findOne({ 
+          wardId: order.wardId, 
+          status: 'active' 
+        });
+        
+        if (deliveryBoy) {
+          order.deliveryBoy = deliveryBoy._id;
+          order.deliveryStatus = 'assigned';
+          order.deliveryAssignedAt = new Date();
+          await order.save();
+          console.log(`✅ Order ${order.orderId} auto-assigned to: ${deliveryBoy.name} (Ward ${order.wardId})`);
+        } else {
+          console.log(`⚠️ No active delivery boy for Ward ${order.wardId}`);
+        }
+      } catch (err) {
+        console.error('Auto-assign error:', err.message);
+      }
+    }
     
     // Update stock for COD orders
     if (paymentMethod === 'cod') {

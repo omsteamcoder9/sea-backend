@@ -19,7 +19,13 @@ import privacyRoutes from './routes/privacyRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
+import statsRoutes from './routes/statsRoutes.js';
+import adminUserRoutes from './routes/adminUserRoutes.js';
 
+
+// ✅ ADD THESE IMPORTS FOR DELIVERY BOY
+import deliveryRoutes from './routes/deliveryRoutes.js';
+import adminDeliveryRoutes from './routes/adminDeliveryRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +41,7 @@ connectDB();
 
 // Parse CORS origins from environment variable
 const getAllowedOrigins = () => {
-  const origins = process.env.ALLOWED_ORIGINS ;
+  const origins = process.env.ALLOWED_ORIGINS;
   // Split by comma and trim whitespace
   return origins.split(',').map(origin => origin.trim());
 };
@@ -81,8 +87,13 @@ await fastify.register(privacyRoutes, { prefix: '/api' });
 await fastify.register(orderRoutes, { prefix: '/api' });
 await fastify.register(paymentRoutes, { prefix: '/api' });
 await fastify.register(settingsRoutes, { prefix: '/api' });
+await fastify.register(statsRoutes, { prefix: '/api' });
+await fastify.register(adminUserRoutes, { prefix: '/api' });
 
 
+// ✅ ADD DELIVERY BOY ROUTES
+await fastify.register(deliveryRoutes, { prefix: '/api' });
+await fastify.register(adminDeliveryRoutes, { prefix: '/api' });
 
 // Global error handler
 fastify.setErrorHandler((error, request, reply) => {
@@ -103,6 +114,9 @@ const start = async () => {
     console.log(`CORS enabled for origins: ${getAllowedOrigins().join(', ')}`);
     console.log(`Static files served from: /uploads`);
     console.log(`Contact routes registered at: /api/contacts`);
+    console.log(`Stats routes registered at: /api/stats`);
+    console.log(`✅ Delivery boy routes registered at: /api/delivery`);
+    console.log(`✅ Admin delivery routes registered at: /api/admin/delivery-boys`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

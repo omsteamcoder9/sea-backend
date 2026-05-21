@@ -69,6 +69,20 @@ const orderSchema = new mongoose.Schema({
   cancelledAt: { type: Date },
   cancellationReason: { type: String },
   deliveredAt: { type: Date },
+
+
+  // Add these fields inside your orderSchema (anywhere, suggested near payment fields):
+
+  // Delivery Boy Fields
+  deliveryBoy: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryBoy', default: null },
+  deliveryAssignedAt: { type: Date, default: null },
+  deliveryPickedUpAt: { type: Date, default: null },
+  deliveryDeliveredAt: { type: Date, default: null },
+  deliveryStatus: { 
+    type: String, 
+    enum: ['unassigned', 'assigned', 'picked_up', 'delivered', 'returned'],
+    default: 'unassigned'
+  },
   
 }, { timestamps: true });
 
