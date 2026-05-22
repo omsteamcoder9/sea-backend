@@ -23,6 +23,15 @@ try {
   console.error('Error loading wards:', error.message);
 }
 
+// Helper: Get ward names from ward IDs
+const getWardNames = (wardIds, wards) => {
+  if (!wardIds || !wardIds.length) return [];
+  return wardIds.map(id => {
+    const ward = wards.find(w => w.wardId === id);
+    return ward ? ward.wardName : `Ward ${id}`;
+  });
+};
+
 // Get all delivery boys
 export const getAllDeliveryBoys = async (request, reply) => {
   try {
@@ -70,13 +79,13 @@ export const getDeliveryBoyById = async (request, reply) => {
 // Add new delivery boy
 export const addDeliveryBoy = async (request, reply) => {
   try {
-    const { name, email, phone, password, wardId, wardName, vehicleType, vehicleNumber } = request.body;
+    const { name, email, phone, password, wardIds, vehicleType, vehicleNumber } = request.body;
     
     // Validation
-    if (!name || !email || !phone || !password || !wardId) {
+    if (!name || !email || !phone || !password || !wardIds || !wardIds.length) {
       return reply.status(400).send({ 
         success: false, 
-        message: 'Name, email, phone, password and ward are required' 
+        message: 'Name, email, phone, password and at least one ward are required' 
       });
     }
     
@@ -91,13 +100,16 @@ export const addDeliveryBoy = async (request, reply) => {
     
     const hashedPassword = await bcrypt.hash(password, 10);
     
+    // Get ward names from IDs
+    const wardNames = getWardNames(wardIds, wardsList);
+    
     const deliveryBoy = new DeliveryBoy({
       name,
       email,
       phone,
       password: hashedPassword,
-      wardId: parseInt(wardId),
-      wardName: wardName || `Ward ${wardId}`,
+      wardIds: wardIds.map(id => parseInt(id)),
+      wardNames: wardNames,
       vehicleType: vehicleType || 'bike',
       vehicleNumber: vehicleNumber || '',
       status: 'active',
@@ -114,8 +126,8 @@ export const addDeliveryBoy = async (request, reply) => {
         name: deliveryBoy.name,
         email: deliveryBoy.email,
         phone: deliveryBoy.phone,
-        wardId: deliveryBoy.wardId,
-        wardName: deliveryBoy.wardName
+        wardIds: deliveryBoy.wardIds,
+        wardNames: deliveryBoy.wardNames
       }
     });
   } catch (error) {
@@ -131,7 +143,7 @@ export const addDeliveryBoy = async (request, reply) => {
 export const updateDeliveryBoy = async (request, reply) => {
   try {
     const { id } = request.params;
-    const { name, email, phone, wardId, wardName, vehicleType, vehicleNumber, status, password } = request.body;
+    const { name, email, phone, wardIds, vehicleType, vehicleNumber, status, password } = request.body;
     
     const deliveryBoy = await DeliveryBoy.findById(id);
     if (!deliveryBoy) {
@@ -145,8 +157,10 @@ export const updateDeliveryBoy = async (request, reply) => {
     if (name) deliveryBoy.name = name;
     if (email) deliveryBoy.email = email;
     if (phone) deliveryBoy.phone = phone;
-    if (wardId) deliveryBoy.wardId = parseInt(wardId);
-    if (wardName) deliveryBoy.wardName = wardName;
+    if (wardIds && wardIds.length) {
+      deliveryBoy.wardIds = wardIds.map(id => parseInt(id));
+      deliveryBoy.wardNames = getWardNames(deliveryBoy.wardIds, wardsList);
+    }
     if (vehicleType) deliveryBoy.vehicleType = vehicleType;
     if (vehicleNumber) deliveryBoy.vehicleNumber = vehicleNumber;
     if (status) deliveryBoy.status = status;
@@ -164,8 +178,8 @@ export const updateDeliveryBoy = async (request, reply) => {
         name: deliveryBoy.name,
         email: deliveryBoy.email,
         phone: deliveryBoy.phone,
-        wardId: deliveryBoy.wardId,
-        wardName: deliveryBoy.wardName,
+        wardIds: deliveryBoy.wardIds,
+        wardNames: deliveryBoy.wardNames,
         status: deliveryBoy.status
       }
     });
@@ -312,30 +326,139 @@ export const assignOrderToDeliveryBoy = async (request, reply) => {
     });
   }
 };
-
-// Get delivery boy stats for admin dashboard
 export const getDeliveryBoyStats = async (request, reply) => {
   try {
-    const totalBoys = await DeliveryBoy.countDocuments();
-    const activeBoys = await DeliveryBoy.countDocuments({ status: 'active' });
-    const inactiveBoys = await DeliveryBoy.countDocuments({ status: 'inactive' });
+    const { id } = request.params;
     
-    const totalDeliveries = await Order.countDocuments({ deliveryStatus: 'delivered' });
+    console.log(`📊 Fetching stats for delivery boy ID: ${id}`);
     
+    // Find delivery boy
+    const deliveryBoy = await DeliveryBoy.findById(id);
+    if (!deliveryBoy) {
+      console.log(`❌ Delivery boy not found: ${id}`);
+      return reply.status(404).send({
+        success: false,
+        message: 'Delivery boy not found'
+      });
+    }
+    
+    // ✅ LOG THE ACTUAL DATA FROM DATABASE
+    console.log('✅ Delivery boy from DB:', {
+      id: deliveryBoy._id,
+      name: deliveryBoy.name,
+      phone: deliveryBoy.phone,
+      email: deliveryBoy.email,
+      status: deliveryBoy.status,
+      wardIds: deliveryBoy.wardIds,
+      wardNames: deliveryBoy.wardNames,
+      totalDeliveries: deliveryBoy.totalDeliveries,
+      totalEarnings: deliveryBoy.totalEarnings,
+      createdAt: deliveryBoy.createdAt
+    });
+    
+    // Get ALL orders assigned to this delivery boy
+    const allOrders = await Order.find({ 
+      deliveryBoy: id 
+    }).sort({ createdAt: -1 });
+    
+    console.log(`📦 Total orders found: ${allOrders.length}`);
+    
+    // Calculate statistics
+    const totalOrders = allOrders.length;
+    const deliveredOrders = allOrders.filter(o => o.deliveryStatus === 'delivered').length;
+    const cancelledOrders = allOrders.filter(o => o.orderStatus === 'cancelled').length;
+    const pendingOrders = allOrders.filter(o => 
+      (o.deliveryStatus === 'assigned' || o.deliveryStatus === 'picked_up') && 
+      o.orderStatus !== 'cancelled'
+    ).length;
+    
+    // Recent orders
+    const recentOrders = allOrders.slice(0, 10);
+    
+    // ✅ MAKE SURE TO RETURN ACTUAL DATABASE VALUES, NOT DEFAULTS
     return reply.status(200).send({
       success: true,
       stats: {
-        totalBoys,
-        activeBoys,
-        inactiveBoys,
-        totalDeliveries
+        totalOrders,
+        deliveredOrders,
+        cancelledOrders,
+        pendingOrders,
+        totalEarnings: deliveryBoy.totalEarnings || 0
+      },
+      monthlyStats: [],
+      recentOrders,
+      deliveryBoy: {
+        id: deliveryBoy._id,
+        name: deliveryBoy.name,  // Should be "Ajay"
+        email: deliveryBoy.email,  // Should be "Ajay1@example.com"
+        phone: deliveryBoy.phone,  // Should be "7092514027"
+        wardIds: deliveryBoy.wardIds || [],  // Should be [1, 2]
+        wardNames: deliveryBoy.wardNames || [],  // Should be ward names
+        vehicleType: deliveryBoy.vehicleType || 'Not specified',
+        vehicleNumber: deliveryBoy.vehicleNumber || '',
+        status: deliveryBoy.status || 'inactive',  // Should be "active"
+        totalDeliveries: deliveryBoy.totalDeliveries || 0,
+        totalEarnings: deliveryBoy.totalEarnings || 0,
+        joinedAt: deliveryBoy.createdAt  // Should have a date
       }
     });
+    
   } catch (error) {
-    console.error('Get delivery boy stats error:', error);
-    return reply.status(500).send({ 
-      success: false, 
-      message: error.message 
+    console.error('❌ Get delivery boy stats error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Get delivery boy's orders with filters
+export const getDeliveryBoyOrders = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const { status, page = 1, limit = 20 } = request.query;
+    
+    console.log(`📋 Fetching orders for delivery boy: ${id}, filter: ${status || 'all'}`);
+    
+    const filter = { deliveryBoy: id };
+    
+    if (status && status !== 'all') {
+      if (status === 'delivered') {
+        filter.deliveryStatus = 'delivered';
+      } else if (status === 'cancelled') {
+        filter.orderStatus = 'cancelled';
+      } else if (status === 'pending') {
+        filter.deliveryStatus = { $in: ['assigned', 'picked_up'] };
+      }
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const orders = await Order.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    const totalOrders = await Order.countDocuments(filter);
+    
+    console.log(`✅ Found ${totalOrders} orders for delivery boy`);
+    
+    return reply.status(200).send({
+      success: true,
+      orders,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalOrders / parseInt(limit)),
+        totalOrders,
+        limit: parseInt(limit)
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Get delivery boy orders error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
     });
   }
 };

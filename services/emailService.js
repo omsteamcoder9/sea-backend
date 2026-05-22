@@ -413,3 +413,98 @@ export const sendOrderCancellationEmail = async (order, customerInfo, cancellati
     return { success: false, error: error.message };
   }
 };
+
+// Send order refund confirmation email
+export const sendOrderRefundEmail = async (order, customerInfo, refundAmount, reason) => {
+  try {
+    const transporter = createTransporter();
+    
+    const customerEmail = customerInfo?.email || order.shippingAddress?.email;
+    const customerName = customerInfo?.name || order.user?.name || 'Customer';
+    
+    if (!customerEmail) {
+      console.log('❌ No customer email found, skipping refund email');
+      return { success: false, message: 'No email address found' };
+    }
+    
+    // ✅ ADDED WEIGHT COLUMN IN TABLE
+    const itemsHtml = order.products.map(item => {
+      const weightDisplay = item.weight && item.weight > 0 ? `${item.weight}${item.weightUnit === 'gram' ? 'g' : item.weightUnit === 'kg' ? 'kg' : item.weightUnit}` : '-';
+      
+      return `
+      <tr>
+        <td style="padding: 10px; border-bottom: 1px solid #eee;">${item.name} ${item.variantName ? `(${item.variantName})` : ''}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${weightDisplay}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${item.price.toFixed(2)}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">₹${(item.quantity * item.price).toFixed(2)}</td>
+      </td>
+    `}).join('');
+    
+    const mailOptions = {
+      from: process.env.ADMIN_EMAIL,
+      to: customerEmail,
+      subject: `Refund Processed - ${order.orderId}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: #4CAF50; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0;">Refund Processed!</h1>
+          </div>
+          
+          <div style="background: #f9f9f9; padding: 20px; border-radius: 0 0 10px 10px;">
+            <p>Dear <strong>${customerName}</strong>,</p>
+            <p>Your refund has been processed successfully.</p>
+            
+            <div style="background: white; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #4CAF50;">Refund Details</h3>
+              <p><strong>Order ID:</strong> ${order.orderId}</p>
+              <p><strong>Refund Amount:</strong> <span style="color: #4CAF50; font-size: 18px; font-weight: bold;">₹${refundAmount.toFixed(2)}</span></p>
+              ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+              <p><strong>Refund Date:</strong> ${new Date().toLocaleString()}</p>
+            </div>
+            
+            <div style="background: white; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #996600;">Items Ordered</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="background: #f0f0f0;">
+                    <th style="padding: 10px; text-align: left;">Product</th>
+                    <th style="padding: 10px; text-align: center;">Qty</th>
+                    <th style="padding: 10px; text-align: center;">Weight</th>
+                    <th style="padding: 10px; text-align: right;">Price</th>
+                    <th style="padding: 10px; text-align: right;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsHtml}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="4" style="padding: 10px; text-align: right;"><strong>Total:</strong></td>
+                    <td style="padding: 10px; text-align: right;">₹${order.finalAmount.toFixed(2)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #2e7d32;">Refund Information</h3>
+              <p>The refund amount will be credited back to your original payment method within 5-7 business days.</p>
+              <p>If you have any questions, please contact our support team.</p>
+            </div>
+            
+            <p>Best regards,<br><strong>SeaFood Team</strong></p>
+          </div>
+        </div>
+      `,
+    };
+    
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Refund email sent to ${customerEmail}`);
+    return { success: true, messageId: info.messageId };
+    
+  } catch (error) {
+    console.error('❌ Error sending refund email:', error);
+    return { success: false, error: error.message };
+  }
+};

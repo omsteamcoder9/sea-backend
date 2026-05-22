@@ -2,7 +2,8 @@ import DeliveryBoy from '../models/DeliveryBoy.js';
 import Order from '../models/Order.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-
+import { sendOrderStatusUpdateEmail } from '../services/emailService.js';
+import { sendOrderStatusSMS } from '../services/smsService.js';
 // Delivery Boy Login
 export const deliveryLogin = async (request, reply) => {
   try {
@@ -53,8 +54,8 @@ export const deliveryLogin = async (request, reply) => {
         name: deliveryBoy.name,
         email: deliveryBoy.email,
         phone: deliveryBoy.phone,
-        wardId: deliveryBoy.wardId,
-        wardName: deliveryBoy.wardName,
+ wardIds: deliveryBoy.wardIds || [],      // ✅ USE THIS
+        wardNames: deliveryBoy.wardNames || [],  // ✅ USE THIS
         vehicleType: deliveryBoy.vehicleType,
         totalDeliveries: deliveryBoy.totalDeliveries,
         totalEarnings: deliveryBoy.totalEarnings
@@ -93,15 +94,19 @@ export const getMyOrders = async (request, reply) => {
   }
 };
 
-// Get delivery order history (delivered orders)
+// Get delivery order history (delivered + cancelled orders)
 export const getOrderHistory = async (request, reply) => {
   try {
     const deliveryBoyId = request.user.id;
     
+    // ✅ Include both delivered AND cancelled orders
     const orders = await Order.find({ 
       deliveryBoy: deliveryBoyId,
-      deliveryStatus: 'delivered'
-    }).sort({ deliveryDeliveredAt: -1 }).limit(50);
+      $or: [
+        { deliveryStatus: 'delivered' },
+        { orderStatus: 'cancelled' }
+      ]
+    }).sort({ createdAt: -1 }).limit(50);
     
     return reply.status(200).send({ 
       success: true, 
@@ -190,7 +195,6 @@ export const markPickedUp = async (request, reply) => {
   }
 };
 
-// Mark order as delivered
 export const markDelivered = async (request, reply) => {
   try {
     const { orderId } = request.params;
@@ -213,12 +217,43 @@ export const markDelivered = async (request, reply) => {
     order.deliveryDeliveredAt = new Date();
     order.orderStatus = 'delivered';
     order.deliveredAt = new Date();
+    
+    // ✅ AUTO-COMPLETE COD PAYMENT
+    if (order.paymentMethod === 'cod') {
+      order.paymentStatus = 'completed';
+      order.paidAt = new Date();
+    }
+    
     await order.save();
     
     // Update delivery boy stats
     await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
       $inc: { totalDeliveries: 1 }
     });
+    
+    // ========== SEND ORDER STATUS UPDATE EMAIL ==========
+    const customerEmail = order.shippingAddress?.email;
+    const customerName = order.shippingAddress?.name || 'Customer';
+    const customerPhone = order.shippingAddress?.phone;
+    
+    if (customerEmail) {
+      try {
+        await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, 'picked_up', 'delivered');
+        console.log(`📧 Order status update email sent to ${customerEmail} (Delivered)`);
+      } catch (emailError) {
+        console.error('Failed to send order status email:', emailError.message);
+      }
+    }
+    
+    // Optional: Send SMS as well
+    if (customerPhone) {
+      try {
+        await sendOrderStatusSMS(customerPhone, order, 'delivered');
+        console.log(`📱 Order status SMS sent to ${customerPhone}`);
+      } catch (smsError) {
+        console.error('Failed to send order status SMS:', smsError.message);
+      }
+    }
     
     return reply.status(200).send({ 
       success: true, 
@@ -227,7 +262,8 @@ export const markDelivered = async (request, reply) => {
         _id: order._id,
         orderId: order.orderId,
         deliveryStatus: order.deliveryStatus,
-        deliveryDeliveredAt: order.deliveryDeliveredAt
+        deliveryDeliveredAt: order.deliveryDeliveredAt,
+        paymentStatus: order.paymentStatus
       }
     });
   } catch (error) {
@@ -238,7 +274,6 @@ export const markDelivered = async (request, reply) => {
     });
   }
 };
-
 // Get delivery boy profile
 export const getProfile = async (request, reply) => {
   try {
@@ -252,7 +287,20 @@ export const getProfile = async (request, reply) => {
     
     return reply.status(200).send({ 
       success: true, 
-      deliveryBoy 
+      deliveryBoy: {
+        id: deliveryBoy._id,
+        name: deliveryBoy.name,
+        email: deliveryBoy.email,
+        phone: deliveryBoy.phone,
+        wardIds: deliveryBoy.wardIds || [],      // ✅ ADD THIS
+        wardNames: deliveryBoy.wardNames || [],  // ✅ ADD THIS
+        vehicleType: deliveryBoy.vehicleType,
+        vehicleNumber: deliveryBoy.vehicleNumber,
+        status: deliveryBoy.status,
+        totalDeliveries: deliveryBoy.totalDeliveries,
+        totalEarnings: deliveryBoy.totalEarnings,
+        createdAt: deliveryBoy.createdAt
+      }
     });
   } catch (error) {
     console.error('Get profile error:', error);
@@ -329,6 +377,46 @@ export const getStats = async (request, reply) => {
     });
   } catch (error) {
     console.error('Get stats error:', error);
+    return reply.status(500).send({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+};
+
+// Mark order as waiting for delivery
+export const markWaiting = async (request, reply) => {
+  try {
+    const { orderId } = request.params;
+    const deliveryBoyId = request.user.id;
+    
+    const order = await Order.findOne({ 
+      _id: orderId, 
+      deliveryBoy: deliveryBoyId,
+      deliveryStatus: 'picked_up'
+    });
+    
+    if (!order) {
+      return reply.status(404).send({ 
+        success: false, 
+        message: 'Order not found or not picked up yet' 
+      });
+    }
+    
+    order.deliveryStatus = 'waiting';
+    await order.save();
+    
+    return reply.status(200).send({ 
+      success: true, 
+      message: 'Order marked as waiting for delivery',
+      order: {
+        _id: order._id,
+        orderId: order.orderId,
+        deliveryStatus: order.deliveryStatus
+      }
+    });
+  } catch (error) {
+    console.error('Mark waiting error:', error);
     return reply.status(500).send({ 
       success: false, 
       message: error.message 

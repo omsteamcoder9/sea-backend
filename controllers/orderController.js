@@ -9,12 +9,17 @@ import { fileURLToPath } from 'url';
 import { 
   sendOrderConfirmationEmail, 
   sendOrderStatusUpdateEmail, 
-  sendOrderCancellationEmail 
+  sendOrderCancellationEmail ,
+  sendOrderRefundEmail ,
+   
+
 } from '../services/emailService.js';
 import { 
   sendOrderConfirmationSMS, 
   sendOrderStatusSMS, 
-  sendOrderCancellationSMS 
+  sendOrderCancellationSMS ,
+    sendOrderRefundSMS      
+
 } from '../services/smsService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -534,27 +539,29 @@ export const createOrder = async (request, reply) => {
     
     console.log(`\n✅ Order created: ${order.orderId} (sNo: ${order.sNo})`);
         // ========== AUTO-ASSIGN DELIVERY BOY BASED ON WARD ==========
-    if (order.wardId) {
-      try {
-        const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
-        const deliveryBoy = await DeliveryBoy.findOne({ 
-          wardId: order.wardId, 
-          status: 'active' 
-        });
-        
-        if (deliveryBoy) {
-          order.deliveryBoy = deliveryBoy._id;
-          order.deliveryStatus = 'assigned';
-          order.deliveryAssignedAt = new Date();
-          await order.save();
-          console.log(`✅ Order ${order.orderId} auto-assigned to: ${deliveryBoy.name} (Ward ${order.wardId})`);
-        } else {
-          console.log(`⚠️ No active delivery boy for Ward ${order.wardId}`);
-        }
-      } catch (err) {
-        console.error('Auto-assign error:', err.message);
-      }
+// ========== AUTO-ASSIGN DELIVERY BOY BASED ON WARD (MULTIPLE WARDS SUPPORT) ==========
+if (order.wardId) {
+  try {
+    const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
+    // ✅ CHANGED: Find delivery boy whose wardIds array INCLUDES the order's wardId
+    const deliveryBoy = await DeliveryBoy.findOne({ 
+      wardIds: { $in: [order.wardId] },  // Check if order ward is in boy's wardIds array
+      status: 'active' 
+    });
+    
+    if (deliveryBoy) {
+      order.deliveryBoy = deliveryBoy._id;
+      order.deliveryStatus = 'assigned';
+      order.deliveryAssignedAt = new Date();
+      await order.save();
+      console.log(`✅ Order ${order.orderId} auto-assigned to: ${deliveryBoy.name} (Ward ${order.wardId})`);
+    } else {
+      console.log(`⚠️ No active delivery boy found for Ward ${order.wardId}`);
     }
+  } catch (err) {
+    console.error('Auto-assign error:', err.message);
+  }
+}
     
     // Update stock for COD orders
     if (paymentMethod === 'cod') {
@@ -891,14 +898,23 @@ export const updateOrderStatus = async (request, reply) => {
     const oldStatus = order.orderStatus;
     
     if (orderStatus) {
+      // Handle delivered status
       if (orderStatus === 'delivered' && order.orderStatus !== 'delivered') {
         order.deliveredAt = new Date();
       }
       
+      // Handle cancelled status
       if (orderStatus === 'cancelled' && order.orderStatus !== 'cancelled') {
         order.cancelledAt = new Date();
         if (cancellationReason) order.cancellationReason = cancellationReason;
         await restoreProductStock(order.products);
+        
+        // ✅ FIX: Remove delivery boy assignment when cancelled
+        order.deliveryStatus = 'unassigned';
+       
+        order.deliveryAssignedAt = null;
+        order.deliveryPickedUpAt = null;
+        order.deliveryDeliveredAt = null;
       }
       
       order.orderStatus = orderStatus;
@@ -942,6 +958,7 @@ export const updateOrderStatus = async (request, reply) => {
         _id: order._id,
         orderId: order.orderId,
         orderStatus: order.orderStatus,
+        deliveryStatus: order.deliveryStatus,
         paymentStatus: order.paymentStatus,
         deliveredAt: order.deliveredAt,
         cancelledAt: order.cancelledAt
@@ -952,7 +969,6 @@ export const updateOrderStatus = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
-
 // ADMIN: Get single order
 export const getAdminOrderById = async (request, reply) => {
   try {
@@ -1379,6 +1395,12 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
     if (orderStatus === 'cancelled' && oldStatus !== 'cancelled') {
       order.cancelledAt = new Date();
       await restoreProductStock(order.products);
+      
+      // ✅ FIX: Remove delivery boy assignment when cancelled
+      order.deliveryStatus = 'unassigned';
+      order.deliveryAssignedAt = null;
+      order.deliveryPickedUpAt = null;
+      order.deliveryDeliveredAt = null;
     }
 
     await order.save();
@@ -1407,8 +1429,10 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
       order: {
         orderId: order.orderId,
         orderStatus: order.orderStatus,
+        deliveryStatus: order.deliveryStatus,
         paymentStatus: order.paymentStatus,
-        deliveredAt: order.deliveredAt
+        deliveredAt: order.deliveredAt,
+        cancelledAt: order.cancelledAt
       }
     });
 
@@ -1461,28 +1485,42 @@ export const cancelOrder = async (request, reply) => {
       });
     }
 
+    // Update order status
     order.orderStatus = 'cancelled';
     order.cancelledAt = new Date();
+    
+    // ✅ FIX: Update delivery status but KEEP delivery boy reference
+    order.deliveryStatus = 'unassigned';
+    // order.deliveryBoy = null;  // ✅ REMOVED - keep for history
+    order.deliveryAssignedAt = null;
+    
     if (cancellationReason) {
       order.cancellationReason = cancellationReason;
     }
 
+    // Restore product stock
     await restoreProductStock(order.products);
     await order.save();
 
+    console.log(`✅ Order ${order.orderId} cancelled by ${isAdmin ? 'admin' : 'user'}`);
+
+    // Send cancellation email
     const customerEmail = order.shippingAddress?.email;
     const customerName = order.shippingAddress?.name || 'Customer';
     const customerPhone = order.shippingAddress?.phone;
     
     try {
       await sendOrderCancellationEmail(order, { email: customerEmail, name: customerName }, cancellationReason, isAdmin ? 'admin' : 'user');
+      console.log(`📧 Cancellation email sent to ${customerEmail}`);
     } catch (emailError) {
       console.error('Failed to send cancellation email:', emailError);
     }
     
+    // Send cancellation SMS
     try {
       if (customerPhone) {
         await sendOrderCancellationSMS(customerPhone, order, cancellationReason);
+        console.log(`📱 Cancellation SMS sent to ${customerPhone}`);
       }
     } catch (smsError) {
       console.error('Failed to send cancellation SMS:', smsError);
@@ -1495,6 +1533,8 @@ export const cancelOrder = async (request, reply) => {
         _id: order._id,
         orderId: order.orderId,
         orderStatus: order.orderStatus,
+        deliveryStatus: order.deliveryStatus,
+        deliveryBoy: order.deliveryBoy,  // ✅ Will show delivery boy ID
         cancelledAt: order.cancelledAt,
         cancellationReason: order.cancellationReason
       }
@@ -1510,7 +1550,7 @@ export const cancelOrder = async (request, reply) => {
   }
 };
 
-// Delete order (Admin only)
+// Delete order (Admin only) - Delete ANY order regardless of status
 export const deleteOrder = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -1531,15 +1571,9 @@ export const deleteOrder = async (request, reply) => {
       });
     }
 
-    if (order.orderStatus === 'delivered') {
-      return reply.status(400).send({
-        success: false,
-        message: 'Cannot delete a delivered order'
-      });
-    }
-
+    // ✅ NO CHECKS - Delete any order (Pending, Confirmed, Delivered, Cancelled, etc.)
     await order.deleteOne();
-    console.log(`✅ Admin deleted order ${order.orderId}`);
+    console.log(`✅ Admin deleted order ${order.orderId} (Status: ${order.orderStatus})`);
 
     return reply.status(200).send({
       success: true,
@@ -1554,7 +1588,6 @@ export const deleteOrder = async (request, reply) => {
     });
   }
 };
-
 // Update order payment failed
 export const updateOrderPaymentFailed = async (request, reply) => {
   try {
@@ -1682,6 +1715,31 @@ export const processRefund = async (request, reply) => {
       
       console.log(`✅ Refund processed successfully. Refund ID: ${refund.id}`);
       
+      // ========== SEND REFUND EMAIL & SMS ==========
+      const customerEmail = order.shippingAddress?.email;
+      const customerName = order.shippingAddress?.name || 'Customer';
+      const customerPhone = order.shippingAddress?.phone;
+      
+      // Send Refund Email
+      if (customerEmail) {
+        try {
+          await sendOrderRefundEmail(order, { email: customerEmail, name: customerName }, refundAmount, reason);
+          console.log(`📧 Refund email sent to ${customerEmail}`);
+        } catch (emailError) {
+          console.error('Failed to send refund email:', emailError);
+        }
+      }
+      
+      // Send Refund SMS
+      if (customerPhone) {
+        try {
+          await sendOrderRefundSMS(customerPhone, order, refundAmount, reason);
+          console.log(`📱 Refund SMS sent to ${customerPhone}`);
+        } catch (smsError) {
+          console.error('Failed to send refund SMS:', smsError);
+        }
+      }
+      
       return reply.status(200).send({
         success: true,
         message: 'Refund processed successfully',
@@ -1702,6 +1760,21 @@ export const processRefund = async (request, reply) => {
         order.refundedAt = new Date();
         order.paymentStatus = 'refunded';
         await order.save();
+        
+        // Still send notification even if already refunded
+        const customerEmail = order.shippingAddress?.email;
+        const customerPhone = order.shippingAddress?.phone;
+        
+        if (customerEmail) {
+          try {
+            await sendOrderRefundEmail(order, { email: customerEmail, name: 'Customer' }, refundAmount, reason);
+          } catch (e) { console.error(e); }
+        }
+        if (customerPhone) {
+          try {
+            await sendOrderRefundSMS(customerPhone, order, refundAmount, reason);
+          } catch (e) { console.error(e); }
+        }
         
         return reply.status(200).send({
           success: true,

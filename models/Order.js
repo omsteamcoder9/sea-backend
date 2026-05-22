@@ -80,7 +80,7 @@ const orderSchema = new mongoose.Schema({
   deliveryDeliveredAt: { type: Date, default: null },
   deliveryStatus: { 
     type: String, 
-    enum: ['unassigned', 'assigned', 'picked_up', 'delivered', 'returned'],
+    enum: ['unassigned', 'assigned', 'picked_up', 'delivered','waiting', 'returned'],
     default: 'unassigned'
   },
   
