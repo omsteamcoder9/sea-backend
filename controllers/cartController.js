@@ -517,8 +517,7 @@ export const removeFromCart = async (request, reply) => {
   try {
     const { itemId } = request.params;
     const userId = request.user?.id || request.user?.userId || request.user?._id;
-    const { guestId } = request.body;
-
+const { guestId } = request.body || {};
     let cart;
     if (userId) {
       cart = await Cart.findOne({ user: userId });
@@ -577,8 +576,7 @@ export const removeFromCart = async (request, reply) => {
 export const clearCart = async (request, reply) => {
   try {
     const userId = request.user?.id || request.user?.userId || request.user?._id;
-    const { guestId } = request.body;
-
+const { guestId } = request.body || {};
     let cart;
     if (userId) {
       cart = await Cart.findOne({ user: userId });
@@ -609,6 +607,49 @@ export const clearCart = async (request, reply) => {
 
   } catch (error) {
     console.error('Clear Cart Error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const clearGuestCart = async (request, reply) => {
+  try {
+    const { guestId } = request.body;
+    
+    if (!guestId) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Guest ID required'
+      });
+    }
+    
+    const cart = await Cart.findOne({ guestId });
+    if (!cart) {
+      return reply.status(200).send({
+        success: true,
+        message: 'No cart found'
+      });
+    }
+    
+    // Clear all items
+    cart.items = [];
+    cart.totalItems = 0;
+    cart.totalPrice = 0;
+    cart.totalOriginalPrice = 0;
+    cart.totalSavings = 0;
+    
+    await cart.save();
+    
+    return reply.status(200).send({
+      success: true,
+      message: 'Cart cleared successfully',
+      data: cart
+    });
+    
+  } catch (error) {
+    console.error('Clear Guest Cart Error:', error);
     return reply.status(500).send({
       success: false,
       message: error.message

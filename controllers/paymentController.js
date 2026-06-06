@@ -408,3 +408,179 @@ export const refundPayment = async (request, reply) => {
     });
   }
 };
+
+
+// Add this function to paymentController.js
+export const getRazorpayCheckoutPage = async (request, reply) => {
+  try {
+    const { orderId } = request.params;
+    
+    const order = await Order.findOne({ orderId });
+    if (!order) {
+      return reply.status(404).send('Order not found');
+    }
+    
+    const settings = await Setting.findOne();
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+        <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f5;
+          }
+          .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+          }
+          .loader-card {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            max-width: 350px;
+            width: 100%;
+          }
+          .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #D53E0F;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+          .title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+          }
+          .subtitle {
+            font-size: 14px;
+            color: #666;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="loader-card">
+            <div class="spinner"></div>
+            <div class="title">Loading Payment Gateway</div>
+            <div class="subtitle">Please wait...</div>
+          </div>
+        </div>
+        
+        <script>
+          async function initPayment() {
+            try {
+              console.log('1️⃣ Creating Razorpay order...');
+              
+              const response = await fetch('/api/payments/create-order', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                  orderId: '${orderId}' 
+                })
+              });
+              
+              const data = await response.json();
+              console.log('2️⃣ Order created:', data);
+              
+              if (data.success) {
+                var options = {
+                  key: data.key,
+                  amount: ${order.finalAmount * 100},
+                  currency: 'INR',
+                  name: '${settings?.siteName || 'Sea Food'}',
+                  description: 'Order ${orderId}',
+                  order_id: data.order.id,
+                  prefill: {
+                    name: '${(order.shippingAddress?.name || '').replace(/'/g, "\\'")}',
+                    email: '${order.shippingAddress?.email || ''}',
+                    contact: '${order.shippingAddress?.phone || ''}'
+                  },
+                  theme: {
+                    color: '#D53E0F'
+                  },
+                  handler: function(response) {
+                    console.log('3️⃣ Payment success:', response);
+                    
+                    fetch('/api/payments/verify-payment', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        razorpay_order_id: response.razorpay_order_id,
+                        razorpay_payment_id: response.razorpay_payment_id,
+                        razorpay_signature: response.razorpay_signature
+                      })
+                    })
+                    .then(res => res.json())
+                    .then(result => {
+                      console.log('4️⃣ Verification result:', result);
+                      if (result.success) {
+                        window.location.href = 'razorpay://payment/success?orderId=' + result.order.orderId;
+                      } else {
+                        window.location.href = 'razorpay://payment/failed?message=' + encodeURIComponent(result.message);
+                      }
+                    })
+                    .catch(err => {
+                      console.error('Verification error:', err);
+                      window.location.href = 'razorpay://payment/error?message=' + encodeURIComponent(err.message);
+                    });
+                  },
+                  modal: {
+                    ondismiss: function() {
+                      console.log('Payment modal closed');
+                      window.location.href = 'razorpay://payment/cancelled';
+                    }
+                  }
+                };
+                
+                var rzp = new Razorpay(options);
+                rzp.open();
+              } else {
+                console.error('Create order failed:', data.message);
+                window.location.href = 'razorpay://payment/error?message=' + encodeURIComponent(data.message || 'Failed to create order');
+              }
+            } catch (error) {
+              console.error('Init payment error:', error);
+              window.location.href = 'razorpay://payment/error?message=' + encodeURIComponent(error.message);
+            }
+          }
+          
+          // Start payment after short delay
+          setTimeout(initPayment, 500);
+        </script>
+      </body>
+      </html>
+    `;
+    
+    reply.type('text/html').send(html);
+    
+  } catch (error) {
+    console.error('Razorpay page error:', error);
+    return reply.status(500).send('Internal server error');
+  }
+};

@@ -35,7 +35,14 @@ dotenv.config();
 const fastify = Fastify({
   logger: true
 });
-
+// ADD HERE
+fastify.addHook('onRequest', async (request, reply) => {
+  console.log('================================');
+  console.log('REQUEST RECEIVED');
+  console.log('Method:', request.method);
+  console.log('URL:', request.url);
+  console.log('================================');
+});
 // Connect to MongoDB
 connectDB();
 
@@ -75,6 +82,13 @@ await fastify.register(fastifyStatic, {
 fastify.decorate('requireAdmin', requireAdmin);
 fastify.decorate('uploadImages', uploadImages);
 fastify.decorate('optimizeImages', optimizeImages);
+// ADD TEST ROUTE HERE
+fastify.get('/api/test', async (request, reply) => {
+  return {
+    success: true,
+    message: 'Server working'
+  };
+});
 
 // Register routes
 await fastify.register(authRoutes, { prefix: '/api/auth' });

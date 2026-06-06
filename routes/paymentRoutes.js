@@ -4,7 +4,8 @@ import {
   verifyPayment,
   paymentFailed,
   getPaymentStatus,
-  refundPayment
+  refundPayment,
+  getRazorpayCheckoutPage
 } from '../controllers/paymentController.js';
 import { requireStrictAuth, requireAdmin } from '../controllers/authController.js';
 
@@ -23,7 +24,8 @@ async function paymentRoutes(fastify, options) {
   
   // Get payment status by order ID (authenticated users)
   fastify.get('/payments/status/:orderId', { preHandler: requireStrictAuth }, getPaymentStatus);
-  
+  // Add this route
+fastify.get('/payment-page/:orderId', getRazorpayCheckoutPage);
   // Refund payment (Admin only)
   fastify.post('/payments/refund/:paymentId', { preHandler: requireAdmin }, refundPayment);
   
