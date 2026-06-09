@@ -318,10 +318,11 @@ const isDeliverableArea = (city) => {
 };
 
 // ========== CREATE ORDER ==========
+// ========== CREATE ORDER ==========
 export const createOrder = async (request, reply) => {
   try {
     const userId = request.user.userId || request.user.id;
-    const { shippingAddress, paymentMethod, paymentId } = request.body;
+    const { shippingAddress, paymentMethod, paymentId, skipCartClear, products: bodyProducts } = request.body;
     
     if (!shippingAddress || !paymentMethod) {
       return reply.status(400).send({
@@ -348,160 +349,241 @@ export const createOrder = async (request, reply) => {
       });
     }
     
-    const cart = await Cart.findOne({ user: userId }).populate('items.product');
-    
-    if (!cart || cart.items.length === 0) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Cart is empty'
-      });
-    }
-    
-    console.log(`\n🛒 Creating order for user ${userId}`);
-    console.log(`📦 Cart has ${cart.items.length} items`);
-    console.log(`📍 Shipping address: "${shippingAddress.street}, ${shippingAddress.city}"`);
-    
-    // Ward matching
-    let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
-
-    const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
-    if (exactMatch) wardInfo = exactMatch;
-
-    if (!wardInfo.wardId) {
-      const coreMatch = findWardByCoreStreetName(shippingAddress.street);
-      if (coreMatch) wardInfo = coreMatch;
-    }
-
-    if (!wardInfo.wardId) {
-      const keywordMatch = findWardByKeyword(shippingAddress);
-      if (keywordMatch) wardInfo = keywordMatch;
-    }
-
-    if (!wardInfo.wardId) {
-      const coordinates = await geocodeAddress(shippingAddress);
-      if (coordinates) {
-        const foundWard = findWardByCoordinates(coordinates.lat, coordinates.lng);
-        if (foundWard) wardInfo = foundWard;
-      }
-    }
-
-    if (!wardInfo.wardId) {
-      console.log(`❌ Order REJECTED: Street "${shippingAddress.street}" not found in Karaikudi wards`);
-      return reply.status(400).send({
-        success: false,
-        code: 'STREET_NOT_FOUND',
-        message: `We couldn't verify your address "${shippingAddress.street}". Please enter a valid street name in Karaikudi.`
-      });
-    }
-
-    console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
-    
-    // Process cart items
     let totalAmount = 0;
-    const products = [];
+    let products = [];
     
-    for (const item of cart.items) {
-      const product = await Product.findById(item.product._id);
+    // ✅ FIX: If skipCartClear is true (Buy Now mode), use products from request body
+    if (skipCartClear && bodyProducts && bodyProducts.length > 0) {
+      console.log(`🛒 Buy Now mode - Using ${bodyProducts.length} products from request body`);
       
-      if (!product) {
-        return reply.status(404).send({
+      for (const item of bodyProducts) {
+        const product = await Product.findById(item.product);
+        
+        if (!product) {
+          return reply.status(404).send({
+            success: false,
+            message: `Product not found: ${item.product}`
+          });
+        }
+        
+        const price = item.price;
+        const variantId = item.variantId;
+        const variantName = item.variantName || '';
+        
+        let variant = null;
+        let originalPrice = price;
+        
+        if (variantId && product.variants && product.variants.length > 0) {
+          variant = product.variants.find(v => v._id.toString() === variantId);
+          if (variant) {
+            originalPrice = variant.originalPrice || variant.price || price;
+          }
+        }
+        
+        // Check stock
+        if (variant) {
+          if (variant.stock < item.quantity) {
+            return reply.status(400).send({
+              success: false,
+              message: `Insufficient stock for ${product.name} - ${variantName}`
+            });
+          }
+        } else if (product.stock < item.quantity) {
+          return reply.status(400).send({
+            success: false,
+            message: `Insufficient stock for ${product.name}`
+          });
+        }
+        
+        const itemTotal = item.quantity * price;
+        totalAmount += itemTotal;
+        
+        let discountPercentage = 0;
+        if (originalPrice > price) {
+          discountPercentage = Math.round(((originalPrice - price) / originalPrice) * 100);
+        }
+        
+        const productImage = product.images && product.images.length > 0 
+          ? product.images[0].image 
+          : product.ogImage || null;
+        
+        products.push({
+          product: product._id,
+          variantId: variantId,
+          variantName: variantName,
+          quantity: item.quantity,
+          price: price,
+          originalPrice: originalPrice,
+          discountPercentage: discountPercentage,
+          name: product.name,
+          image: productImage,
+          weight: item.weight || 0,
+          weightUnit: item.weightUnit || 'gram'
+        });
+        
+        console.log(`  ✅ Buy Now product added: ${product.name} x ${item.quantity} = ${itemTotal}`);
+      }
+    } else {
+      // ❌ NORMAL CHECKOUT - Use cart from database
+      console.log(`🛒 Normal checkout - Using cart from database`);
+      
+      const cart = await Cart.findOne({ user: userId }).populate('items.product');
+      
+      if (!cart || cart.items.length === 0) {
+        return reply.status(400).send({
           success: false,
-          message: `Product not found`
+          message: 'Cart is empty'
         });
       }
       
-      console.log(`\n--- Processing cart item: ${product.name} ---`);
-      console.log(`  Cart variantId: ${item.variantId || 'NOT SET'}`);
-      console.log(`  Cart variantName: ${item.variantName || 'NOT SET'}`);
+      console.log(`📦 Cart has ${cart.items.length} items`);
+      console.log(`📍 Shipping address: "${shippingAddress.street}, ${shippingAddress.city}"`);
       
-      // Get weight from cart item
-      let itemWeight = item.weight || 0;
-      let itemWeightUnit = item.weightUnit || 'gram';
-      
-      if (product.variants && product.variants.length > 0) {
-        const hasVariant = (item.variantId && item.variantId !== '' && item.variantId !== 'null') || 
-                          (item.variantName && item.variantName !== '');
-        
-        if (!hasVariant) {
-          console.log(`❌ ERROR: Product "${product.name}" has variants but no variant selected`);
-          return reply.status(400).send({
-            success: false,
-            message: `Please select a variant for ${product.name}`
-          });
-        }
-        
-        let variant = null;
-        if (item.variantId && item.variantId !== '' && item.variantId !== 'null') {
-          variant = product.variants.find(v => v._id.toString() === item.variantId);
-        } else if (item.variantName && item.variantName !== '') {
-          variant = product.variants.find(v => v.variantName === item.variantName);
-        }
-        
-        if (!variant) {
-          console.log(`❌ ERROR: Variant not found for product "${product.name}"`);
-          return reply.status(400).send({
-            success: false,
-            message: `Variant not found for ${product.name}`
-          });
-        }
-        
-        if (variant.stock < item.quantity) {
-          console.log(`❌ ERROR: Insufficient stock for ${product.name} - ${variant.variantName}`);
-          return reply.status(400).send({
-            success: false,
-            message: `Insufficient stock for ${product.name} - ${variant.variantName}. Only ${variant.stock} left.`
-          });
-        }
-        
-        // Get weight from variant if not already set
-        if (!itemWeight && variant.weight) {
-          itemWeight = variant.weight;
-          itemWeightUnit = variant.weightUnit || 'gram';
-        }
-        
-        console.log(`✅ Variant found: ${variant.variantName}, Stock: ${variant.stock}, Weight: ${itemWeight} ${itemWeightUnit}`);
-        
-      } else {
-        if (product.stock < item.quantity) {
-          console.log(`❌ ERROR: Insufficient stock for ${product.name}`);
-          return reply.status(400).send({
-            success: false,
-            message: `Insufficient stock for ${product.name}. Only ${product.stock} left.`
-          });
-        }
-        console.log(`✅ No variants, product stock: ${product.stock}`);
+      // Ward matching
+      let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
+
+      const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
+      if (exactMatch) wardInfo = exactMatch;
+
+      if (!wardInfo.wardId) {
+        const coreMatch = findWardByCoreStreetName(shippingAddress.street);
+        if (coreMatch) wardInfo = coreMatch;
       }
-      
-      const itemPrice = item.price || product.basePrice;
-      const itemTotal = item.quantity * itemPrice;
-      totalAmount += itemTotal;
-      
-      const productImage = product.images && product.images.length > 0 
-        ? product.images[0].image 
-        : product.ogImage || null;
-      
-      let discountPercentage = 0;
-      let originalPrice = item.originalPrice || itemPrice;
-      if (originalPrice > itemPrice) {
-        discountPercentage = Math.round(((originalPrice - itemPrice) / originalPrice) * 100);
+
+      if (!wardInfo.wardId) {
+        const keywordMatch = findWardByKeyword(shippingAddress);
+        if (keywordMatch) wardInfo = keywordMatch;
       }
+
+      if (!wardInfo.wardId) {
+        const coordinates = await geocodeAddress(shippingAddress);
+        if (coordinates) {
+          const foundWard = findWardByCoordinates(coordinates.lat, coordinates.lng);
+          if (foundWard) wardInfo = foundWard;
+        }
+      }
+
+      if (!wardInfo.wardId) {
+        console.log(`❌ Order REJECTED: Street "${shippingAddress.street}" not found in Karaikudi wards`);
+        return reply.status(400).send({
+          success: false,
+          code: 'STREET_NOT_FOUND',
+          message: `We couldn't verify your address "${shippingAddress.street}". Please enter a valid street name in Karaikudi.`
+        });
+      }
+
+      console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
       
-      // ✅ ADD WEIGHT to products array
-      products.push({
-        product: product._id,
-        variantId: item.variantId || null,
-        variantName: item.variantName || '',
-        quantity: item.quantity,
-        price: itemPrice,
-        originalPrice: originalPrice,
-        discountPercentage: discountPercentage,
-        name: product.name,
-        image: productImage,
-        weight: itemWeight,
-        weightUnit: itemWeightUnit
+      // Process cart items
+      for (const item of cart.items) {
+        const product = await Product.findById(item.product._id);
+        
+        if (!product) {
+          return reply.status(404).send({
+            success: false,
+            message: `Product not found`
+          });
+        }
+        
+        console.log(`\n--- Processing cart item: ${product.name} ---`);
+        console.log(`  Cart variantId: ${item.variantId || 'NOT SET'}`);
+        console.log(`  Cart variantName: ${item.variantName || 'NOT SET'}`);
+        
+        let itemWeight = item.weight || 0;
+        let itemWeightUnit = item.weightUnit || 'gram';
+        
+        if (product.variants && product.variants.length > 0) {
+          const hasVariant = (item.variantId && item.variantId !== '' && item.variantId !== 'null') || 
+                            (item.variantName && item.variantName !== '');
+          
+          if (!hasVariant) {
+            console.log(`❌ ERROR: Product "${product.name}" has variants but no variant selected`);
+            return reply.status(400).send({
+              success: false,
+              message: `Please select a variant for ${product.name}`
+            });
+          }
+          
+          let variant = null;
+          if (item.variantId && item.variantId !== '' && item.variantId !== 'null') {
+            variant = product.variants.find(v => v._id.toString() === item.variantId);
+          } else if (item.variantName && item.variantName !== '') {
+            variant = product.variants.find(v => v.variantName === item.variantName);
+          }
+          
+          if (!variant) {
+            console.log(`❌ ERROR: Variant not found for product "${product.name}"`);
+            return reply.status(400).send({
+              success: false,
+              message: `Variant not found for ${product.name}`
+            });
+          }
+          
+          if (variant.stock < item.quantity) {
+            console.log(`❌ ERROR: Insufficient stock for ${product.name} - ${variant.variantName}`);
+            return reply.status(400).send({
+              success: false,
+              message: `Insufficient stock for ${product.name} - ${variant.variantName}. Only ${variant.stock} left.`
+            });
+          }
+          
+          if (!itemWeight && variant.weight) {
+            itemWeight = variant.weight;
+            itemWeightUnit = variant.weightUnit || 'gram';
+          }
+          
+          console.log(`✅ Variant found: ${variant.variantName}, Stock: ${variant.stock}, Weight: ${itemWeight} ${itemWeightUnit}`);
+          
+        } else {
+          if (product.stock < item.quantity) {
+            console.log(`❌ ERROR: Insufficient stock for ${product.name}`);
+            return reply.status(400).send({
+              success: false,
+              message: `Insufficient stock for ${product.name}. Only ${product.stock} left.`
+            });
+          }
+          console.log(`✅ No variants, product stock: ${product.stock}`);
+        }
+        
+        const itemPrice = item.price || product.basePrice;
+        const itemTotal = item.quantity * itemPrice;
+        totalAmount += itemTotal;
+        
+        const productImage = product.images && product.images.length > 0 
+          ? product.images[0].image 
+          : product.ogImage || null;
+        
+        let discountPercentage = 0;
+        let originalPrice = item.originalPrice || itemPrice;
+        if (originalPrice > itemPrice) {
+          discountPercentage = Math.round(((originalPrice - itemPrice) / originalPrice) * 100);
+        }
+        
+        products.push({
+          product: product._id,
+          variantId: item.variantId || null,
+          variantName: item.variantName || '',
+          quantity: item.quantity,
+          price: itemPrice,
+          originalPrice: originalPrice,
+          discountPercentage: discountPercentage,
+          name: product.name,
+          image: productImage,
+          weight: itemWeight,
+          weightUnit: itemWeightUnit
+        });
+        
+        console.log(`  ✅ Added to order: ${item.quantity} x ${itemPrice} = ${itemTotal} (Weight: ${itemWeight} ${itemWeightUnit})`);
+      }
+    }
+    
+    // Validate totalAmount
+    if (isNaN(totalAmount) || totalAmount <= 0) {
+      console.error('❌ Invalid total amount calculated:', totalAmount);
+      return reply.status(400).send({
+        success: false,
+        message: 'Invalid order total calculated'
       });
-      
-      console.log(`  ✅ Added to order: ${item.quantity} x ${itemPrice} = ${itemTotal} (Weight: ${itemWeight} ${itemWeightUnit})`);
     }
     
     const shippingFee = 0;
@@ -518,6 +600,30 @@ export const createOrder = async (request, reply) => {
     console.log(`   Subtotal: ${totalAmount}`);
     console.log(`   Tax (5%): ${taxAmount}`);
     console.log(`   Final: ${finalAmount}`);
+    
+    // Create order - for normal checkout we need ward info, for Buy Now we need to get ward info
+    let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
+    
+    // Only do ward matching for normal checkout (non-Buy Now) or if we have address
+    if (!skipCartClear) {
+      const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
+      if (exactMatch) wardInfo = exactMatch;
+      else {
+        const coreMatch = findWardByCoreStreetName(shippingAddress.street);
+        if (coreMatch) wardInfo = coreMatch;
+        else {
+          const keywordMatch = findWardByKeyword(shippingAddress);
+          if (keywordMatch) wardInfo = keywordMatch;
+          else {
+            const coordinates = await geocodeAddress(shippingAddress);
+            if (coordinates) {
+              const foundWard = findWardByCoordinates(coordinates.lat, coordinates.lng);
+              if (foundWard) wardInfo = foundWard;
+            }
+          }
+        }
+      }
+    }
     
     const order = await Order.create({
       user: userId,
@@ -538,30 +644,29 @@ export const createOrder = async (request, reply) => {
     });
     
     console.log(`\n✅ Order created: ${order.orderId} (sNo: ${order.sNo})`);
-        // ========== AUTO-ASSIGN DELIVERY BOY BASED ON WARD ==========
-// ========== AUTO-ASSIGN DELIVERY BOY BASED ON WARD (MULTIPLE WARDS SUPPORT) ==========
-if (order.wardId) {
-  try {
-    const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
-    // ✅ CHANGED: Find delivery boy whose wardIds array INCLUDES the order's wardId
-    const deliveryBoy = await DeliveryBoy.findOne({ 
-      wardIds: { $in: [order.wardId] },  // Check if order ward is in boy's wardIds array
-      status: 'active' 
-    });
     
-    if (deliveryBoy) {
-      order.deliveryBoy = deliveryBoy._id;
-      order.deliveryStatus = 'assigned';
-      order.deliveryAssignedAt = new Date();
-      await order.save();
-      console.log(`✅ Order ${order.orderId} auto-assigned to: ${deliveryBoy.name} (Ward ${order.wardId})`);
-    } else {
-      console.log(`⚠️ No active delivery boy found for Ward ${order.wardId}`);
+    // ========== AUTO-ASSIGN DELIVERY BOY BASED ON WARD ==========
+    if (order.wardId) {
+      try {
+        const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
+        const deliveryBoy = await DeliveryBoy.findOne({ 
+          wardIds: { $in: [order.wardId] },
+          status: 'active' 
+        });
+        
+        if (deliveryBoy) {
+          order.deliveryBoy = deliveryBoy._id;
+          order.deliveryStatus = 'assigned';
+          order.deliveryAssignedAt = new Date();
+          await order.save();
+          console.log(`✅ Order ${order.orderId} auto-assigned to: ${deliveryBoy.name} (Ward ${order.wardId})`);
+        } else {
+          console.log(`⚠️ No active delivery boy found for Ward ${order.wardId}`);
+        }
+      } catch (err) {
+        console.error('Auto-assign error:', err.message);
+      }
     }
-  } catch (err) {
-    console.error('Auto-assign error:', err.message);
-  }
-}
     
     // Update stock for COD orders
     if (paymentMethod === 'cod') {
@@ -571,13 +676,16 @@ if (order.wardId) {
       await order.save();
     }
     
-    // Clear cart
-    await Cart.findOneAndUpdate(
-      { user: userId }, 
-      { $set: { items: [], totalItems: 0, totalPrice: 0, totalOriginalPrice: 0, totalSavings: 0 } }
-    );
-    
-    console.log(`🗑️ Cart cleared for user ${userId}\n`);
+    // ✅ FIX: Only clear cart if NOT in Buy Now mode (skipCartClear is false or undefined)
+    if (!skipCartClear) {
+      await Cart.findOneAndUpdate(
+        { user: userId }, 
+        { $set: { items: [], totalItems: 0, totalPrice: 0, totalOriginalPrice: 0, totalSavings: 0 } }
+      );
+      console.log(`🗑️ Cart cleared for user ${userId} (normal checkout)`);
+    } else {
+      console.log(`🛒 Buy Now mode - Cart NOT cleared for user ${userId} (cart preserved)`);
+    }
     
     // ========== SEND NOTIFICATIONS - ONLY FOR COD ==========
     if (paymentMethod === 'cod') {
