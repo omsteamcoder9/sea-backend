@@ -601,29 +601,37 @@ export const createOrder = async (request, reply) => {
     console.log(`   Tax (5%): ${taxAmount}`);
     console.log(`   Final: ${finalAmount}`);
     
-    // Create order - for normal checkout we need ward info, for Buy Now we need to get ward info
+    // ========== ✅ FIXED: ALWAYS do ward matching for ALL orders (both Cart and Buy Now) ==========
     let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
     
-    // Only do ward matching for normal checkout (non-Buy Now) or if we have address
-    if (!skipCartClear) {
-      const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
-      if (exactMatch) wardInfo = exactMatch;
+    const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
+    if (exactMatch) wardInfo = exactMatch;
+    else {
+      const coreMatch = findWardByCoreStreetName(shippingAddress.street);
+      if (coreMatch) wardInfo = coreMatch;
       else {
-        const coreMatch = findWardByCoreStreetName(shippingAddress.street);
-        if (coreMatch) wardInfo = coreMatch;
+        const keywordMatch = findWardByKeyword(shippingAddress);
+        if (keywordMatch) wardInfo = keywordMatch;
         else {
-          const keywordMatch = findWardByKeyword(shippingAddress);
-          if (keywordMatch) wardInfo = keywordMatch;
-          else {
-            const coordinates = await geocodeAddress(shippingAddress);
-            if (coordinates) {
-              const foundWard = findWardByCoordinates(coordinates.lat, coordinates.lng);
-              if (foundWard) wardInfo = foundWard;
-            }
+          const coordinates = await geocodeAddress(shippingAddress);
+          if (coordinates) {
+            const foundWard = findWardByCoordinates(coordinates.lat, coordinates.lng);
+            if (foundWard) wardInfo = foundWard;
           }
         }
       }
     }
+
+    if (!wardInfo.wardId) {
+      console.log(`❌ Order REJECTED: Street "${shippingAddress.street}" not found in Karaikudi wards`);
+      return reply.status(400).send({
+        success: false,
+        code: 'STREET_NOT_FOUND',
+        message: `We couldn't verify your address "${shippingAddress.street}". Please enter a valid street name in Karaikudi.`
+      });
+    }
+
+    console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
     
     const order = await Order.create({
       user: userId,
