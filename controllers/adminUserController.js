@@ -75,7 +75,7 @@ export const getAllUsers = async (request, reply) => {
     });
     
   } catch (error) {
-    console.error('❌ Get all users error:', error);
+    console.error(' Get all users error:', error);
     return reply.status(500).send({
       success: false,
       message: 'Error fetching users',
