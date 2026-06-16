@@ -523,7 +523,7 @@ export const getRazorpayCheckoutPage = async (request, reply) => {
                     color: '#D53E0F'
                   },
                   handler: function(response) {
-                    console.log('3️⃣ Payment success:', response);
+                    console.log('3️ Payment success:', response);
                     
                     fetch('/api/payments/verify-payment', {
                       method: 'POST',
