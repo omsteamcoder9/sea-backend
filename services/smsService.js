@@ -92,7 +92,7 @@ export const sendSMSTemplate = async (phoneNumber, templateId, templateData = {}
 
 // Send order confirmation SMS
 export const sendOrderConfirmationSMS = async (phoneNumber, order) => {
-  const message = `SeaFood: Order ${order.orderId} confirmed! Amount: ₹${order.finalAmount}. We'll notify you once shipped. Thank you!`;
+  const message = `MeenavanFresh: Order ${order.orderId} confirmed! Amount: ₹${order.finalAmount}. We'll notify you once shipped. Thank you!`;
   return await sendSMS(phoneNumber, message);
 };
 
@@ -102,17 +102,17 @@ export const sendOrderStatusSMS = async (phoneNumber, order, newStatus) => {
     confirmed: `Order ${order.orderId} confirmed!`,
     processing: `Order ${order.orderId} is being processed.`,
     shipped: `Order ${order.orderId} has been shipped!`,
-    delivered: `Order ${order.orderId} delivered! Thank you for shopping with SeaFood.`,
+    delivered: `Order ${order.orderId} delivered! Thank you for shopping with MeenavanFresh.`,
     cancelled: `Order ${order.orderId} has been cancelled.`
   };
   
-  const message = `SeaFood: ${statusMessages[newStatus] || `Order ${order.orderId} status updated to ${newStatus}`}`;
+  const message = `MeenavanFresh: ${statusMessages[newStatus] || `Order ${order.orderId} status updated to ${newStatus}`}`;
   return await sendSMS(phoneNumber, message);
 };
 
 // Send order cancellation SMS
 export const sendOrderCancellationSMS = async (phoneNumber, order, reason) => {
-  const message = `SeaFood: Order ${order.orderId} cancelled.${reason ? ` Reason: ${reason}` : ''} Contact support for queries.`;
+  const message = `MeenavanFresh: Order ${order.orderId} cancelled.${reason ? ` Reason: ${reason}` : ''} Contact support for queries.`;
   console.log(`📱 Sending cancellation SMS to ${phoneNumber} for order ${order.orderId}`);
   const result = await sendSMS(phoneNumber, message);
   if (result.success) {
@@ -125,14 +125,14 @@ export const sendOrderCancellationSMS = async (phoneNumber, order, reason) => {
 
 // Send order refund SMS
 export const sendOrderRefundSMS = async (phoneNumber, order, refundAmount, reason) => {
-  const message = `SeaFood: Refund of ₹${refundAmount} for order ${order.orderId} has been processed. Amount will reflect in 5-7 business days. Thank you!`;
+  const message = `MeenavanFresh: Refund of ₹${refundAmount} for order ${order.orderId} has been processed. Amount will reflect in 5-7 business days. Thank you!`;
   return await sendSMS(phoneNumber, message);
 };
 
 // Test function to verify SMS configuration
 export const testSMS = async (phoneNumber) => {
   console.log('🧪 Testing SMS configuration...');
-  const result = await sendSMS(phoneNumber, 'Test message from SeaFood API');
+  const result = await sendSMS(phoneNumber, 'Test message from MeenavanFresh API');
   console.log('Test result:', result);
   return result;
 };

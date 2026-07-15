@@ -21,6 +21,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import adminUserRoutes from './routes/adminUserRoutes.js';
+import wardRoutes from './routes/wardRoutes.js';
 
 
 // ✅ ADD THESE IMPORTS FOR DELIVERY BOY
@@ -103,6 +104,7 @@ await fastify.register(paymentRoutes, { prefix: '/api' });
 await fastify.register(settingsRoutes, { prefix: '/api' });
 await fastify.register(statsRoutes, { prefix: '/api' });
 await fastify.register(adminUserRoutes, { prefix: '/api' });
+fastify.register(wardRoutes, { prefix: '/api' });
 
 
 // ✅ ADD DELIVERY BOY ROUTES

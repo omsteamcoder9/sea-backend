@@ -1379,7 +1379,7 @@ const addPDFCustomerInfo = (doc, data) => {
   if (data.shippingAddress) {
     if (data.shippingAddress.street) {
       doc.text(data.shippingAddress.street, toColumnX, toY, { width: 150 });
-      toY += 15;
+      toY += 20;
     }
     const cityStateZip = [
       data.shippingAddress.city,

@@ -184,7 +184,7 @@ export const sendOrderConfirmationEmail = async (order, customerInfo) => {
             
             <p>We'll notify you once your order is shipped.</p>
             
-            <p>Best regards,<br><strong>SeaFood Team</strong></p>
+            <p>Best regards,<br><strong>MeenavanFresh Team</strong></p>
           </div>
         </div>
       `,
@@ -302,7 +302,7 @@ export const sendOrderStatusUpdateEmail = async (order, customerInfo, oldStatus,
               </div>
             ` : ''}
             
-            <p>Best regards,<br><strong>SeaFood Team</strong></p>
+            <p>Best regards,<br><strong>MeenavanFresh Team</strong></p>
           </div>
         </div>
       `,
@@ -398,7 +398,7 @@ export const sendOrderCancellationEmail = async (order, customerInfo, cancellati
             
             <p>If you have any questions, please contact our support team.</p>
             
-            <p>Best regards,<br><strong>SeaFood Team</strong></p>
+            <p>Best regards,<br><strong>MeenavanFresh Team</strong></p>
           </div>
         </div>
       `,
@@ -493,7 +493,7 @@ export const sendOrderRefundEmail = async (order, customerInfo, refundAmount, re
               <p>If you have any questions, please contact our support team.</p>
             </div>
             
-            <p>Best regards,<br><strong>SeaFood Team</strong></p>
+            <p>Best regards,<br><strong>MeenavanFresh Team</strong></p>
           </div>
         </div>
       `,
