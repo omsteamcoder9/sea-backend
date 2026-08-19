@@ -408,7 +408,387 @@ export const refundPayment = async (request, reply) => {
     });
   }
 };
+// ============================================================
+// RAZORPAY WEBHOOK - PAYMENT CAPTURED
+// ============================================================
 
+export const razorpayWebhook = async (request, reply) => {
+  try {
+    console.log('\n🔔 ===== RAZORPAY WEBHOOK =====');
+
+    const webhookSignature =
+      request.headers['x-razorpay-signature'];
+
+    if (!webhookSignature) {
+      console.error('❌ Missing Razorpay webhook signature');
+
+      return reply.status(400).send({
+        success: false,
+        message: 'Missing webhook signature',
+      });
+    }
+
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error('❌ RAZORPAY_WEBHOOK_SECRET is not configured');
+
+      return reply.status(500).send({
+        success: false,
+        message: 'Webhook secret not configured',
+      });
+    }
+
+    // IMPORTANT:
+    // Razorpay webhook signature MUST be calculated using
+    // the raw request body.
+    const rawBody = request.rawBody;
+
+    if (!rawBody) {
+      console.error('❌ Raw webhook body is missing');
+
+      return reply.status(400).send({
+        success: false,
+        message: 'Raw webhook body missing',
+      });
+    }
+
+    // --------------------------------------------------------
+    // Verify Razorpay webhook signature
+    // --------------------------------------------------------
+
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(rawBody)
+      .digest('hex');
+
+    if (
+      !crypto.timingSafeEqual(
+        Buffer.from(expectedSignature),
+        Buffer.from(webhookSignature)
+      )
+    ) {
+      console.error('❌ Invalid Razorpay webhook signature');
+
+      return reply.status(400).send({
+        success: false,
+        message: 'Invalid webhook signature',
+      });
+    }
+
+    console.log('✅ Webhook signature verified');
+
+    // --------------------------------------------------------
+    // Parse Razorpay webhook
+    // --------------------------------------------------------
+
+    const event = JSON.parse(rawBody);
+
+    console.log('📦 Razorpay event:', event.event);
+
+    // ========================================================
+    // PAYMENT CAPTURED
+    // ========================================================
+
+    if (event.event === 'payment.captured') {
+      const payment =
+        event.payload?.payment?.entity;
+
+      if (!payment) {
+        console.error('❌ Payment entity missing');
+
+        return reply.status(400).send({
+          success: false,
+          message: 'Payment entity missing',
+        });
+      }
+
+      const razorpayPaymentId = payment.id;
+      const razorpayOrderId = payment.order_id;
+      const amount = Number(payment.amount);
+
+      console.log('💰 PAYMENT CAPTURED');
+      console.log('Payment ID:', razorpayPaymentId);
+      console.log('Order ID:', razorpayOrderId);
+      console.log('Amount:', amount);
+
+      if (!razorpayOrderId || !razorpayPaymentId) {
+        console.error('❌ Razorpay order/payment ID missing');
+
+        return reply.status(400).send({
+          success: false,
+          message: 'Missing Razorpay payment information',
+        });
+      }
+
+      // ------------------------------------------------------
+      // Find MongoDB order
+      // ------------------------------------------------------
+
+      const order = await Order.findOne({
+        razorpayOrderId: razorpayOrderId,
+      });
+
+      if (!order) {
+        console.error(
+          '❌ Order not found:',
+          razorpayOrderId
+        );
+
+        // Acknowledge webhook so Razorpay does not
+        // continuously retry an unknown order.
+        return reply.status(200).send({
+          success: false,
+          message: 'Order not found',
+        });
+      }
+
+      console.log(
+        '✅ MongoDB order found:',
+        order.orderId
+      );
+
+      // ------------------------------------------------------
+      // Prevent duplicate webhook processing
+      // ------------------------------------------------------
+
+      if (order.paymentStatus === 'completed') {
+        console.log(
+          'ℹ️ Order already completed:',
+          order.orderId
+        );
+
+        return reply.status(200).send({
+          success: true,
+          message: 'Payment already processed',
+        });
+      }
+
+      // ------------------------------------------------------
+      // Verify amount
+      // ------------------------------------------------------
+
+      const expectedAmount =
+        Math.round(Number(order.finalAmount) * 100);
+
+      if (amount !== expectedAmount) {
+        console.error('❌ PAYMENT AMOUNT MISMATCH');
+        console.error('Expected:', expectedAmount);
+        console.error('Received:', amount);
+
+        return reply.status(400).send({
+          success: false,
+          message: 'Payment amount mismatch',
+        });
+      }
+
+      // ------------------------------------------------------
+      // Update Payment document
+      // ------------------------------------------------------
+
+      await Payment.findOneAndUpdate(
+        {
+          razorpayOrderId: razorpayOrderId,
+        },
+        {
+          razorpayPaymentId: razorpayPaymentId,
+          status: 'paid',
+          method: 'razorpay',
+          paymentDetails: {
+            razorpay_payment_id: razorpayPaymentId,
+          },
+        },
+        {
+          new: true,
+        }
+      );
+
+      // ------------------------------------------------------
+      // Update Order
+      // ------------------------------------------------------
+
+      order.paymentId = razorpayPaymentId;
+      order.paymentStatus = 'completed';
+      order.orderStatus = 'confirmed';
+      order.paidAt = new Date();
+
+      await order.save();
+
+      console.log(
+        '✅ PAYMENT STATUS UPDATED:',
+        order.orderId
+      );
+
+      console.log(
+        '✅ paymentStatus = completed'
+      );
+
+      console.log(
+        '✅ orderStatus = confirmed'
+      );
+
+      // ------------------------------------------------------
+      // Update stock
+      // ------------------------------------------------------
+
+      try {
+        await updateProductStock(order.products);
+
+        console.log(
+          '📦 Stock updated:',
+          order.orderId
+        );
+      } catch (stockError) {
+        console.error(
+          '❌ Stock update failed:',
+          stockError
+        );
+      }
+
+      // ------------------------------------------------------
+      // Send email
+      // ------------------------------------------------------
+
+      const customerEmail =
+        order.shippingAddress?.email;
+
+      const customerName =
+        order.shippingAddress?.name ||
+        'Customer';
+
+      if (customerEmail) {
+        try {
+          await sendOrderConfirmationEmail(
+            order,
+            {
+              email: customerEmail,
+              name: customerName,
+            }
+          );
+
+          console.log(
+            '📧 Confirmation email sent:',
+            customerEmail
+          );
+        } catch (emailError) {
+          console.error(
+            '❌ Email failed:',
+            emailError
+          );
+        }
+      }
+
+      // ------------------------------------------------------
+      // Send SMS
+      // ------------------------------------------------------
+
+      const customerPhone =
+        order.shippingAddress?.phone;
+
+      if (customerPhone) {
+        try {
+          await sendOrderConfirmationSMS(
+            customerPhone,
+            order
+          );
+
+          console.log(
+            '📱 Confirmation SMS sent:',
+            customerPhone
+          );
+        } catch (smsError) {
+          console.error(
+            '❌ SMS failed:',
+            smsError
+          );
+        }
+      }
+    }
+
+    // ========================================================
+    // PAYMENT FAILED
+    // ========================================================
+
+    if (event.event === 'payment.failed') {
+      const payment =
+        event.payload?.payment?.entity;
+
+      if (payment) {
+        const razorpayOrderId = payment.order_id;
+        const razorpayPaymentId = payment.id;
+
+        console.log(
+          '❌ RAZORPAY PAYMENT FAILED'
+        );
+
+        console.log(
+          'Order ID:',
+          razorpayOrderId
+        );
+
+        console.log(
+          'Payment ID:',
+          razorpayPaymentId
+        );
+
+        if (razorpayOrderId) {
+          await Payment.findOneAndUpdate(
+            {
+              razorpayOrderId:
+                razorpayOrderId,
+            },
+            {
+              razorpayPaymentId:
+                razorpayPaymentId,
+              status: 'failed',
+            }
+          );
+
+          const order = await Order.findOne({
+            razorpayOrderId:
+              razorpayOrderId,
+          });
+
+          // Do not overwrite a completed payment
+          if (
+            order &&
+            order.paymentStatus !== 'completed'
+          ) {
+            order.paymentStatus = 'failed';
+            order.orderStatus = 'cancelled';
+
+            await order.save();
+
+            console.log(
+              '❌ Order marked failed:',
+              order.orderId
+            );
+          }
+        }
+      }
+    }
+
+    // --------------------------------------------------------
+    // Acknowledge Razorpay
+    // --------------------------------------------------------
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Webhook processed successfully',
+    });
+
+  } catch (error) {
+    console.error(
+      '❌ Razorpay webhook error:',
+      error
+    );
+
+    return reply.status(500).send({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 
 // Add this function to paymentController.js
 export const getRazorpayCheckoutPage = async (request, reply) => {

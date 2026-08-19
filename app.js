@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
+import rawBody from 'fastify-raw-body';
 import fastifyStatic from '@fastify/static';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -35,6 +36,22 @@ dotenv.config();
 
 const fastify = Fastify({
   logger: true
+});
+
+await fastify.register(rawBody, {
+  field: 'rawBody',
+  global: false,
+  encoding: 'utf8',
+  runFirst: true,
+});
+
+// ADD HERE
+fastify.addHook('onRequest', async (request, reply) => {
+  console.log('================================');
+  console.log('REQUEST RECEIVED');
+  console.log('Method:', request.method);
+  console.log('URL:', request.url);
+  console.log('================================');
 });
 // ADD HERE
 fastify.addHook('onRequest', async (request, reply) => {

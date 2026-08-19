@@ -5,7 +5,8 @@ import {
   paymentFailed,
   getPaymentStatus,
   refundPayment,
-  getRazorpayCheckoutPage
+  getRazorpayCheckoutPage,
+  razorpayWebhook
 } from '../controllers/paymentController.js';
 import { requireStrictAuth, requireAdmin } from '../controllers/authController.js';
 
@@ -18,7 +19,16 @@ async function paymentRoutes(fastify, options) {
   
   // Verify payment (callback from Razorpay)
   fastify.post('/payments/verify-payment', verifyPayment);
-  
+  // Razorpay webhook
+fastify.post(
+  '/payments/razorpay-webhook',
+  {
+    config: {
+      rawBody: true,
+    },
+  },
+  razorpayWebhook
+);
   // Payment failed callback
   fastify.post('/payments/payment-failed', paymentFailed);
   
