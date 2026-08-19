@@ -540,20 +540,21 @@ export const getRazorpayCheckoutPage = async (request, reply) => {
                     .then(result => {
                       console.log('4️⃣ Verification result:', result);
                       if (result.success) {
-                        window.location.href = 'razorpay://payment/success?orderId=' + result.order.orderId;
+                        // ✅ FIXED: Redirect to HTML page instead of deep link
+                        window.location.href = '/payment-success?orderId=' + result.order.orderId;
                       } else {
-                        window.location.href = 'razorpay://payment/failed?message=' + encodeURIComponent(result.message);
+                        window.location.href = '/payment-failed?message=' + encodeURIComponent(result.message);
                       }
                     })
                     .catch(err => {
                       console.error('Verification error:', err);
-                      window.location.href = 'razorpay://payment/error?message=' + encodeURIComponent(err.message);
+                      window.location.href = '/payment-error?message=' + encodeURIComponent(err.message);
                     });
                   },
                   modal: {
                     ondismiss: function() {
                       console.log('Payment modal closed');
-                      window.location.href = 'razorpay://payment/cancelled';
+                      window.location.href = '/payment-cancelled';
                     }
                   }
                 };
@@ -562,11 +563,11 @@ export const getRazorpayCheckoutPage = async (request, reply) => {
                 rzp.open();
               } else {
                 console.error('Create order failed:', data.message);
-                window.location.href = 'razorpay://payment/error?message=' + encodeURIComponent(data.message || 'Failed to create order');
+                window.location.href = '/payment-error?message=' + encodeURIComponent(data.message || 'Failed to create order');
               }
             } catch (error) {
               console.error('Init payment error:', error);
-              window.location.href = 'razorpay://payment/error?message=' + encodeURIComponent(error.message);
+              window.location.href = '/payment-error?message=' + encodeURIComponent(error.message);
             }
           }
           
