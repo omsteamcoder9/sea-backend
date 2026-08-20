@@ -1744,6 +1744,46 @@ export const updateOrderPaymentFailed = async (request, reply) => {
   }
 };
 
+export const getOrderByRazorpayOrderId = async (request, reply) => {
+  try {
+    const { razorpayOrderId } = request.params;
+
+    if (!razorpayOrderId) {
+      return reply.code(400).send({
+        success: false,
+        message: 'Razorpay order ID is required'
+      });
+    }
+
+    const order = await Order.findOne({
+      razorpayOrderId
+    }).lean();
+
+    if (!order) {
+      return reply.code(404).send({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    return reply.code(200).send({
+      success: true,
+      order
+    });
+  } catch (error) {
+    console.error(
+      'Get order by Razorpay order ID error:',
+      error
+    );
+
+    return reply.code(500).send({
+      success: false,
+      message: 'Failed to get payment status',
+      error: error.message
+    });
+  }
+};
+
 // Process refund (Admin only)
 export const processRefund = async (request, reply) => {
   try {

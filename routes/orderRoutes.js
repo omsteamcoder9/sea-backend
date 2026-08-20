@@ -12,6 +12,7 @@ import {
   updateOrderPaymentSuccess,
   updateOrderPaymentFailed,
   printOrderReceipt,
+  getOrderByRazorpayOrderId,
   printOrderReceiptPDF,
   processRefund  // ADD THIS IMPORT
 } from '../controllers/orderController.js';
@@ -32,7 +33,13 @@ async function orderRoutes(fastify, options) {
   
   // Cancel order (user can cancel their own order)
   fastify.put('/orders/:id/cancel', { preHandler: requireStrictAuth }, cancelOrder);
-  
+  // Get order by Razorpay order ID
+// Used by Flutter to recover payment status if verification response is interrupted
+fastify.get(
+  '/orders/razorpay/:razorpayOrderId',
+  { preHandler: requireStrictAuth },
+  getOrderByRazorpayOrderId
+);
   // Print order receipt (JSON)
   fastify.get('/orders/:id/receipt', { preHandler: requireStrictAuth }, printOrderReceipt);
   
