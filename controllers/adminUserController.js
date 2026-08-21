@@ -75,7 +75,7 @@ export const getAllUsers = async (request, reply) => {
     });
     
   } catch (error) {
-    console.error(' Get all users error:', error);
+    console.error('Get all users error:', error);
     return reply.status(500).send({
       success: false,
       message: 'Error fetching users',
@@ -105,7 +105,7 @@ export const getUserById = async (request, reply) => {
     });
     
   } catch (error) {
-    console.error('❌ Get user by ID error:', error);
+    console.error('Get user by ID error:', error);
     return reply.status(500).send({
       success: false,
       message: 'Error fetching user',
@@ -189,7 +189,7 @@ export const updateUser = async (request, reply) => {
     });
     
   } catch (error) {
-    console.error('❌ Update user error:', error);
+    console.error('Update user error:', error);
     
     // Handle duplicate key errors
     if (error.code === 11000) {
@@ -223,19 +223,22 @@ export const deleteUser = async (request, reply) => {
       });
     }
     
-    // Prevent deleting last admin
+    // Prevent deleting last ACTIVE admin
     if (user.role === 'admin') {
-      const adminCount = await User.countDocuments({ role: 'admin', isActive: true });
-      if (adminCount === 1) {
+      const adminCount = await User.countDocuments({ 
+        role: 'admin', 
+        isActive: true 
+      });
+      if (adminCount === 1 && user.isActive) {
         return reply.status(400).send({
           success: false,
-          message: 'Cannot delete the last admin user'
+          message: 'Cannot delete the last active admin user'
         });
       }
     }
     
     if (permanent === 'true' || permanent === true) {
-      // Permanent delete
+      // Permanent delete - remove completely
       await User.findByIdAndDelete(id);
       return reply.status(200).send({
         success: true,
@@ -251,7 +254,7 @@ export const deleteUser = async (request, reply) => {
     }
     
   } catch (error) {
-    console.error('❌ Delete user error:', error);
+    console.error('Delete user error:', error);
     return reply.status(500).send({
       success: false,
       message: 'Error deleting user',
@@ -285,7 +288,7 @@ export const restoreUser = async (request, reply) => {
     });
     
   } catch (error) {
-    console.error('❌ Restore user error:', error);
+    console.error('Restore user error:', error);
     return reply.status(500).send({
       success: false,
       message: 'Error restoring user',
@@ -354,7 +357,7 @@ export const getUserStatsSummary = async (request, reply) => {
     });
     
   } catch (error) {
-    console.error('❌ User stats error:', error);
+    console.error('User stats error:', error);
     return reply.status(500).send({
       success: false,
       message: 'Error fetching user statistics',
@@ -421,7 +424,7 @@ export const createAdminUser = async (request, reply) => {
     });
     
   } catch (error) {
-    console.error('❌ Create admin error:', error);
+    console.error('Create admin error:', error);
     return reply.status(500).send({
       success: false,
       message: 'Error creating admin user',
@@ -453,18 +456,22 @@ export const bulkUserAction = async (request, reply) => {
         break;
         
       case 'deactivate':
-        // Prevent deactivating last admin
+        // Prevent deactivating all active admins
         const adminUsers = await User.find({ 
           _id: { $in: userIds },
-          role: 'admin'
+          role: 'admin',
+          isActive: true
         });
         
         if (adminUsers.length > 0) {
-          const adminCount = await User.countDocuments({ role: 'admin', isActive: true });
+          const adminCount = await User.countDocuments({ 
+            role: 'admin', 
+            isActive: true 
+          });
           if (adminCount === adminUsers.length) {
             return reply.status(400).send({
               success: false,
-              message: 'Cannot deactivate all admin users'
+              message: 'Cannot deactivate all active admin users'
             });
           }
         }
@@ -476,18 +483,22 @@ export const bulkUserAction = async (request, reply) => {
         break;
         
       case 'delete':
-        // Prevent deleting last admin
+        // Prevent deleting all active admins
         const adminsToDelete = await User.find({ 
           _id: { $in: userIds },
-          role: 'admin'
+          role: 'admin',
+          isActive: true
         });
         
         if (adminsToDelete.length > 0) {
-          const adminCount = await User.countDocuments({ role: 'admin' });
+          const adminCount = await User.countDocuments({ 
+            role: 'admin',
+            isActive: true 
+          });
           if (adminCount === adminsToDelete.length) {
             return reply.status(400).send({
               success: false,
-              message: 'Cannot delete all admin users'
+              message: 'Cannot delete all active admin users'
             });
           }
         }
@@ -512,7 +523,7 @@ export const bulkUserAction = async (request, reply) => {
     });
     
   } catch (error) {
-    console.error('❌ Bulk action error:', error);
+    console.error('Bulk action error:', error);
     return reply.status(500).send({
       success: false,
       message: 'Error performing bulk action',

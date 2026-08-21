@@ -19,9 +19,20 @@ export const sendOtp = async (request, reply) => {
       });
     }
     
-    // Check if user exists in database
-    const existingUser = await User.findOne({ phoneNumber });
+    // Check if user exists and is ACTIVE
+    const existingUser = await User.findOne({ 
+      phoneNumber,
+      isActive: true
+    });
+    
+    // Check if there's an inactive user with this phone number
+    const inactiveUser = await User.findOne({ 
+      phoneNumber,
+      isActive: false 
+    });
+    
     const isNewUser = !existingUser;
+    const hasInactiveUser = !!inactiveUser;
     
     // Send OTP via 2factor
     const otpResult = await sendOTP(phoneNumber);
@@ -33,10 +44,11 @@ export const sendOtp = async (request, reply) => {
       });
     }
     
-    // Store OTP session info temporarily
+    // Store OTP session info
     otpSessions.set(otpResult.otpSessionId, {
       phoneNumber,
       isNewUser,
+      hasInactiveUser,
       role: 'user',
       expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes expiry
     });
@@ -105,17 +117,28 @@ export const verifyOtp = async (request, reply) => {
     }
     
     let user;
-    const { phoneNumber, isNewUser } = session;
+    const { phoneNumber, isNewUser, hasInactiveUser } = session;
     
-    if (isNewUser) {
-      // New user - create account with role 'user'
+    if (isNewUser && !hasInactiveUser) {
+      // NEW user - create account
       user = await User.create({
         phoneNumber,
         role: 'user',
+        isActive: true,
         lastLogin: new Date()
       });
+    } else if (hasInactiveUser) {
+      // EXISTING but INACTIVE user - REACTIVATE
+      user = await User.findOneAndUpdate(
+        { phoneNumber },
+        { 
+          isActive: true,
+          lastLogin: new Date()
+        },
+        { new: true }
+      );
     } else {
-      // Existing user - update last login
+      // ACTIVE existing user - just update login
       user = await User.findOneAndUpdate(
         { phoneNumber },
         { lastLogin: new Date() },
@@ -136,7 +159,8 @@ export const verifyOtp = async (request, reply) => {
     
     return reply.status(200).send({
       success: true,
-      message: isNewUser ? 'Account created successfully' : 'Login successful',
+      message: hasInactiveUser ? 'Account reactivated successfully' : 
+               isNewUser ? 'Account created successfully' : 'Login successful',
       token,
       user: {
         id: user._id,
@@ -144,6 +168,7 @@ export const verifyOtp = async (request, reply) => {
         email: user.email,
         role: user.role,
         name: user.name,
+        isActive: user.isActive,
         createdAt: user.createdAt,
         lastLogin: user.lastLogin
       }
@@ -190,6 +215,7 @@ export const createAdmin = async (request, reply) => {
       password: hashedPassword,
       role: 'admin',
       name: name || 'Admin',
+      isActive: true,
       lastLogin: new Date()
     });
     
@@ -233,7 +259,11 @@ export const adminLogin = async (request, reply) => {
     }
     
     // Find admin by email with password field
-    const admin = await User.findOne({ email, role: 'admin' }).select('+password');
+    const admin = await User.findOne({ 
+      email, 
+      role: 'admin',
+      isActive: true // Only allow active admins to login
+    }).select('+password');
     
     if (!admin) {
       return reply.status(401).send({
@@ -323,9 +353,9 @@ export const getProfile = async (request, reply) => {
         email: user.email,
         role: user.role,
         name: user.name,
+        isActive: user.isActive,
         createdAt: user.createdAt,
-        lastLogin: user.lastLogin,
-        isActive: user.isActive
+        lastLogin: user.lastLogin
       }
     });
     
@@ -337,7 +367,8 @@ export const getProfile = async (request, reply) => {
   }
 };
 
-// Add this at the end of your authController.js
+// ============ MIDDLEWARES ============
+
 export const requireAdmin = async (request, reply) => {
   try {
     await request.jwtVerify();
@@ -371,9 +402,10 @@ export const adminDashboard = async (request, reply) => {
     // Get all users (admin only)
     const users = await User.find({}).select('-__v -password');
     const stats = {
-      totalUsers: users.filter(u => u.role === 'user').length,
-      totalAdmins: users.filter(u => u.role === 'admin').length,
-      activeUsers: users.filter(u => u.isActive).length
+      totalUsers: users.filter(u => u.role === 'user' && u.isActive).length,
+      totalAdmins: users.filter(u => u.role === 'admin' && u.isActive).length,
+      activeUsers: users.filter(u => u.isActive).length,
+      inactiveUsers: users.filter(u => !u.isActive).length
     };
     
     return reply.status(200).send({
@@ -389,10 +421,6 @@ export const adminDashboard = async (request, reply) => {
     });
   }
 };
-
-
-
-// Add this to authController.js (after requireAdmin)
 
 // Middleware for authentication (optional - doesn't block guests)
 export const requireAuth = async (request, reply) => {
