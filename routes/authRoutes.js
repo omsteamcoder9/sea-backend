@@ -1,85 +1,57 @@
-import { 
-  sendOtp, 
-  verifyOtp, 
-  logout, 
-  getProfile,
+import {
+  sendOtp,
+  sendSignupOtp,
+  verifyOtp,
   createAdmin,
   adminLogin,
-  adminDashboard
+  logout,
+  getProfile,
+  adminDashboard,
+  requireAdmin,
+  requireAuth,
+  requireStrictAuth
 } from '../controllers/authController.js';
 
 async function authRoutes(fastify, options) {
   
-  // ============ USER ROUTES (OTP Based) ============
-  
-  // Send OTP (for user login/signup)
+  // ✅ User OTP routes - REMOVE /auth prefix since it's already in app.js
   fastify.post('/send-otp', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['phoneNumber'],
-        properties: {
-          phoneNumber: { type: 'string', minLength: 10, maxLength: 15 }
-        }
-      }
-    }
-  }, sendOtp);
+    handler: sendOtp
+  });
   
-  // Verify OTP and login/signup for user
+  fastify.post('/send-signup-otp', {
+    handler: sendSignupOtp
+  });
+  
   fastify.post('/verify-otp', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['otpSessionId', 'otpCode'],
-        properties: {
-          otpSessionId: { type: 'string' },
-          otpCode: { type: 'string', minLength: 4, maxLength: 6 }
-        }
-      }
-    }
-  }, verifyOtp);
+    handler: verifyOtp
+  });
   
-  // ============ ADMIN ROUTES (Email/Password Based) ============
+  // Admin routes
+  fastify.post('/create-admin', {
+    handler: createAdmin
+  });
   
-  // Create admin account (can be restricted or removed after first admin)
-  fastify.post('/admin/create', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['email', 'password'],
-        properties: {
-          email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 6 },
-          name: { type: 'string' }
-        }
-      }
-    }
-  }, createAdmin);
+  fastify.post('/admin-login', {
+    handler: adminLogin
+  });
   
-  // Admin login (email + password)
-  fastify.post('/admin/login', {
-    schema: {
-      body: {
-        type: 'object',
-        required: ['email', 'password'],
-        properties: {
-          email: { type: 'string', format: 'email' },
-          password: { type: 'string', minLength: 6 }
-        }
-      }
-    }
-  }, adminLogin);
+  // Common routes
+  fastify.post('/logout', {
+    preHandler: [requireAuth],
+    handler: logout
+  });
   
-  // Admin protected routes
-  fastify.get('/admin/dashboard', adminDashboard);
+  fastify.get('/profile', {
+    preHandler: [requireAuth],
+    handler: getProfile
+  });
   
-  // ============ COMMON ROUTES ============
-  
-  // Logout (both admin and user)
-  fastify.post('/logout', logout);
-  
-  // Get profile (protected route - works for both)
-  fastify.get('/profile', getProfile);
+  // Admin dashboard
+  fastify.get('/dashboard', {
+    preHandler: [requireAdmin],
+    handler: adminDashboard
+  });
 }
 
 export default authRoutes;

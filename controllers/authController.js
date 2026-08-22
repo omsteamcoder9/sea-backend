@@ -7,7 +7,7 @@ const otpSessions = new Map();
 
 // ============ USER (OTP) AUTH ============
 
-// Send OTP for user login/signup
+// Send OTP for LOGIN - Checks if user exists first
 export const sendOtp = async (request, reply) => {
   try {
     const { phoneNumber } = request.body;
@@ -19,22 +19,22 @@ export const sendOtp = async (request, reply) => {
       });
     }
     
-    // Check if user exists and is ACTIVE
+    // ✅ STEP 1: FIRST check if user exists and is ACTIVE
     const existingUser = await User.findOne({ 
       phoneNumber,
       isActive: true
     });
     
-    // Check if there's an inactive user with this phone number
-    const inactiveUser = await User.findOne({ 
-      phoneNumber,
-      isActive: false 
-    });
+    // ✅ STEP 2: If user DOES NOT exist, return error - NO OTP SENT
+    if (!existingUser) {
+      return reply.status(404).send({
+        success: false,
+        exists: false,
+        message: 'No account found with this phone number'
+      });
+    }
     
-    const isNewUser = !existingUser;
-    const hasInactiveUser = !!inactiveUser;
-    
-    // Send OTP via 2factor
+    // ✅ STEP 3: User exists - NOW send OTP
     const otpResult = await sendOTP(phoneNumber);
     
     if (!otpResult.success) {
@@ -47,10 +47,80 @@ export const sendOtp = async (request, reply) => {
     // Store OTP session info
     otpSessions.set(otpResult.otpSessionId, {
       phoneNumber,
-      isNewUser,
-      hasInactiveUser,
+      isNewUser: false,
+      hasInactiveUser: false,
       role: 'user',
-      expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes expiry
+      expiresAt: Date.now() + 10 * 60 * 1000
+    });
+    
+    // Auto-cleanup expired sessions
+    setTimeout(() => {
+      if (otpSessions.has(otpResult.otpSessionId)) {
+        otpSessions.delete(otpResult.otpSessionId);
+      }
+    }, 10 * 60 * 1000);
+    
+    return reply.status(200).send({
+      success: true,
+      exists: true,
+      message: 'OTP sent successfully',
+      sessionId: otpResult.otpSessionId
+    });
+    
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Send OTP for SIGNUP - Allows new users
+export const sendSignupOtp = async (request, reply) => {
+  try {
+    const { phoneNumber } = request.body;
+    
+    if (!phoneNumber) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Phone number is required'
+      });
+    }
+    
+    // ✅ Check if user already exists (active or inactive)
+    const existingUser = await User.findOne({ phoneNumber });
+    
+    // If user exists and is active, redirect to login
+    if (existingUser && existingUser.isActive) {
+      return reply.status(400).send({
+        success: false,
+        exists: true,
+        isActive: true,
+        message: 'Account already exists. Please login instead.'
+      });
+    }
+    
+    // If user exists but is inactive, we'll reactivate
+    const hasInactiveUser = existingUser && !existingUser.isActive;
+    
+    // ✅ Send OTP
+    const otpResult = await sendOTP(phoneNumber);
+    
+    if (!otpResult.success) {
+      return reply.status(500).send({
+        success: false,
+        message: otpResult.message
+      });
+    }
+    
+    // Store OTP session info
+    otpSessions.set(otpResult.otpSessionId, {
+      phoneNumber,
+      isNewUser: !existingUser,
+      hasInactiveUser: hasInactiveUser,
+      role: 'user',
+      expiresAt: Date.now() + 10 * 60 * 1000
     });
     
     // Auto-cleanup expired sessions
@@ -63,12 +133,13 @@ export const sendOtp = async (request, reply) => {
     return reply.status(200).send({
       success: true,
       message: 'OTP sent successfully',
-      otpSessionId: otpResult.otpSessionId,
-      isNewUser
+      sessionId: otpResult.otpSessionId,
+      isNewUser: !existingUser,
+      hasInactiveUser: hasInactiveUser
     });
     
   } catch (error) {
-    console.error('Send OTP error:', error);
+    console.error('Send signup OTP error:', error);
     return reply.status(500).send({
       success: false,
       message: 'Internal server error'
@@ -79,17 +150,17 @@ export const sendOtp = async (request, reply) => {
 // Verify OTP and login/signup for user
 export const verifyOtp = async (request, reply) => {
   try {
-    const { otpSessionId, otpCode } = request.body;
+    const { sessionId, otpCode } = request.body;
     
-    if (!otpSessionId || !otpCode) {
+    if (!sessionId || !otpCode) {
       return reply.status(400).send({
         success: false,
-        message: 'OTP Session ID and OTP code are required'
+        message: 'Session ID and OTP code are required'
       });
     }
     
     // Check if session exists
-    const session = otpSessions.get(otpSessionId);
+    const session = otpSessions.get(sessionId);
     if (!session) {
       return reply.status(400).send({
         success: false,
@@ -99,7 +170,7 @@ export const verifyOtp = async (request, reply) => {
     
     // Check session expiry
     if (Date.now() > session.expiresAt) {
-      otpSessions.delete(otpSessionId);
+      otpSessions.delete(sessionId);
       return reply.status(400).send({
         success: false,
         message: 'OTP session expired'
@@ -107,7 +178,7 @@ export const verifyOtp = async (request, reply) => {
     }
     
     // Verify OTP with 2factor
-    const verifyResult = await verifyOTP(otpSessionId, otpCode);
+    const verifyResult = await verifyOTP(sessionId, otpCode);
     
     if (!verifyResult.success) {
       return reply.status(400).send({
@@ -147,7 +218,7 @@ export const verifyOtp = async (request, reply) => {
     }
     
     // Clear OTP session
-    otpSessions.delete(otpSessionId);
+    otpSessions.delete(sessionId);
     
     // Generate JWT token
     const token = request.server.jwt.sign({
@@ -262,7 +333,7 @@ export const adminLogin = async (request, reply) => {
     const admin = await User.findOne({ 
       email, 
       role: 'admin',
-      isActive: true // Only allow active admins to login
+      isActive: true
     }).select('+password');
     
     if (!admin) {
@@ -387,7 +458,7 @@ export const requireAdmin = async (request, reply) => {
   }
 };
 
-// Example protected admin route
+// Admin dashboard
 export const adminDashboard = async (request, reply) => {
   try {
     await request.jwtVerify();
@@ -399,7 +470,6 @@ export const adminDashboard = async (request, reply) => {
       });
     }
     
-    // Get all users (admin only)
     const users = await User.find({}).select('-__v -password');
     const stats = {
       totalUsers: users.filter(u => u.role === 'user' && u.isActive).length,
@@ -426,15 +496,12 @@ export const adminDashboard = async (request, reply) => {
 export const requireAuth = async (request, reply) => {
   try {
     await request.jwtVerify();
-    // User is authenticated, proceed
   } catch (error) {
-    // User is not authenticated, but that's OK for guest carts
-    // Set request.user to null and continue
     request.user = null;
   }
 };
 
-// Optional: Strict authentication (requires login)
+// Strict authentication (requires login)
 export const requireStrictAuth = async (request, reply) => {
   try {
     await request.jwtVerify();
