@@ -53,14 +53,7 @@ fastify.addHook('onRequest', async (request, reply) => {
   console.log('URL:', request.url);
   console.log('================================');
 });
-// ADD HERE
-fastify.addHook('onRequest', async (request, reply) => {
-  console.log('================================');
-  console.log('REQUEST RECEIVED');
-  console.log('Method:', request.method);
-  console.log('URL:', request.url);
-  console.log('================================');
-});
+
 // Connect to MongoDB
 connectDB();
 
@@ -121,7 +114,7 @@ await fastify.register(paymentRoutes, { prefix: '/api' });
 await fastify.register(settingsRoutes, { prefix: '/api' });
 await fastify.register(statsRoutes, { prefix: '/api' });
 await fastify.register(adminUserRoutes, { prefix: '/api' });
-fastify.register(wardRoutes, { prefix: '/api' });
+await fastify.register(wardRoutes, { prefix: '/api' });
 
 
 // ✅ ADD DELIVERY BOY ROUTES

@@ -32,7 +32,7 @@ async function authRoutes(fastify, options) {
     handler: createAdmin
   });
   
-  fastify.post('/admin-login', {
+  fastify.post('/admin/login', {
     handler: adminLogin
   });
   

@@ -7,6 +7,8 @@ import {
   restoreUser,
   getUserStatsSummary,
   createAdminUser,
+    deactivateUser,  // ← ADD THIS
+
   bulkUserAction
 } from '../controllers/adminUserController.js';
 
@@ -37,7 +39,10 @@ async function adminUserRoutes(fastify, options) {
     preHandler: [fastify.requireAdmin],
     handler: deleteUser
   });
-  
+  fastify.patch('/admin/users/:id/deactivate', {
+  preHandler: [fastify.requireAdmin],
+  handler: deactivateUser
+});
   fastify.patch('/admin/users/:id/restore', {
     preHandler: [fastify.requireAdmin],
     handler: restoreUser

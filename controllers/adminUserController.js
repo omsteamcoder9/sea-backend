@@ -432,6 +432,55 @@ export const createAdminUser = async (request, reply) => {
     });
   }
 };
+// 🚫 Deactivate user (soft delete)
+export const deactivateUser = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    
+    const user = await User.findById(id);
+    
+    if (!user) {
+      return reply.status(404).send({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Prevent deactivating last ACTIVE admin
+    if (user.role === 'admin' && user.isActive) {
+      const adminCount = await User.countDocuments({ 
+        role: 'admin', 
+        isActive: true 
+      });
+      if (adminCount === 1) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Cannot deactivate the last active admin user'
+        });
+      }
+    }
+    
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      { isActive: false },
+      { new: true }
+    ).lean();
+    
+    return reply.status(200).send({
+      success: true,
+      data: updatedUser,
+      message: 'User deactivated successfully'
+    });
+    
+  } catch (error) {
+    console.error('Deactivate user error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Error deactivating user',
+      error: error.message
+    });
+  }
+};
 
 // 🧹 Bulk actions
 export const bulkUserAction = async (request, reply) => {
