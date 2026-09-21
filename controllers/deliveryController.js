@@ -152,7 +152,62 @@ export const getOrderDetails = async (request, reply) => {
     });
   }
 };
+// ✅ Mark COD payment as received (delivery boy action)
+export const markCodPaid = async (request, reply) => {
+  try {
+    const { orderId } = request.params;
+    const deliveryBoyId = request.user.id;
 
+    const order = await Order.findOne({
+      _id: orderId,
+      deliveryBoy: deliveryBoyId
+    });
+
+    if (!order) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Order not found or not assigned to you'
+      });
+    }
+
+    if (order.paymentMethod !== 'cod') {
+      return reply.status(400).send({
+        success: false,
+        message: 'Only COD orders can be marked as paid manually'
+      });
+    }
+
+    if (order.paymentStatus === 'completed') {
+      return reply.status(400).send({
+        success: false,
+        message: 'Payment already marked as completed'
+      });
+    }
+
+    order.paymentStatus = 'completed';
+    order.paidAt = new Date();
+    await order.save();
+
+    console.log(`✅ COD payment marked as received for order ${order.orderId} by delivery boy ${deliveryBoyId}`);
+
+    return reply.status(200).send({
+      success: true,
+      message: 'COD payment marked as received',
+      order: {
+        _id: order._id,
+        orderId: order.orderId,
+        paymentStatus: order.paymentStatus,
+        paidAt: order.paidAt
+      }
+    });
+  } catch (error) {
+    console.error('Mark COD paid error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message
+    });
+  }
+};
 // Mark order as picked up
 export const markPickedUp = async (request, reply) => {
   try {

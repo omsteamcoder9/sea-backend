@@ -309,20 +309,18 @@ const restoreProductStock = async (products) => {
   }
 };
 
-// Helper: Validate delivery area
-const isDeliverableArea = (city) => {
-  const deliverableCities = ['karaikudi', 'karaikudi.', 'karaikudi,', 'karaikudi '];
-  return deliverableCities.some(deliverableCity => 
-    city.toLowerCase().includes(deliverableCity)
-  );
-};
-
-// ========== CREATE ORDER ==========
 // ========== CREATE ORDER ==========
 export const createOrder = async (request, reply) => {
   try {
-    const userId = request.user.userId || request.user.id;
-    const { shippingAddress, paymentMethod, paymentId, skipCartClear, products: bodyProducts } = request.body;
+    const userId = request.user?.userId || request.user?.id || null;
+    const { 
+      shippingAddress, 
+      paymentMethod, 
+      paymentId, 
+      skipCartClear, 
+      products: bodyProducts,
+      typedArea   // ✅ NEW
+    } = request.body;
     
     if (!shippingAddress || !paymentMethod) {
       return reply.status(400).send({
@@ -331,7 +329,8 @@ export const createOrder = async (request, reply) => {
       });
     }
     
-    const requiredFields = ['street', 'city', 'state', 'postalCode', 'country', 'phone', 'email'];
+    // ✅ Email is now optional
+    const requiredFields = ['street', 'city', 'state', 'postalCode', 'country', 'phone'];
     for (const field of requiredFields) {
       if (!shippingAddress[field]) {
         return reply.status(400).send({
@@ -341,18 +340,10 @@ export const createOrder = async (request, reply) => {
       }
     }
     
-    if (!isDeliverableArea(shippingAddress.city)) {
-      console.log(`❌ Order REJECTED: "${shippingAddress.city}" is not in delivery area`);
-      return reply.status(400).send({
-        success: false,
-        message: `Delivery not available in "${shippingAddress.city}". We currently deliver only to Karaikudi and surrounding areas.`
-      });
-    }
-    
     let totalAmount = 0;
     let products = [];
     
-    // ✅ FIX: If skipCartClear is true (Buy Now mode), use products from request body
+    // Buy Now mode
     if (skipCartClear && bodyProducts && bodyProducts.length > 0) {
       console.log(`🛒 Buy Now mode - Using ${bodyProducts.length} products from request body`);
       
@@ -380,7 +371,6 @@ export const createOrder = async (request, reply) => {
           }
         }
         
-        // Check stock
         if (variant) {
           if (variant.stock < item.quantity) {
             return reply.status(400).send({
@@ -424,7 +414,7 @@ export const createOrder = async (request, reply) => {
         console.log(`  ✅ Buy Now product added: ${product.name} x ${item.quantity} = ${itemTotal}`);
       }
     } else {
-      // ❌ NORMAL CHECKOUT - Use cart from database
+      // Normal checkout
       console.log(`🛒 Normal checkout - Using cart from database`);
       
       const cart = await Cart.findOne({ user: userId }).populate('items.product');
@@ -439,7 +429,7 @@ export const createOrder = async (request, reply) => {
       console.log(`📦 Cart has ${cart.items.length} items`);
       console.log(`📍 Shipping address: "${shippingAddress.street}, ${shippingAddress.city}"`);
       
-      // Ward matching
+      // Ward matching (informational only)
       let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
 
       const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
@@ -463,16 +453,11 @@ export const createOrder = async (request, reply) => {
         }
       }
 
-      if (!wardInfo.wardId) {
-        console.log(`❌ Order REJECTED: Street "${shippingAddress.street}" not found in Karaikudi wards`);
-        return reply.status(400).send({
-          success: false,
-          code: 'STREET_NOT_FOUND',
-          message: `We couldn't verify your address "${shippingAddress.street}". Please enter a valid street name in Karaikudi.`
-        });
+      if (wardInfo.wardId) {
+        console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
+      } else {
+        console.log(`🌍 Non-Karaikudi address — proceeding without ward assignment`);
       }
-
-      console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
       
       // Process cart items
       for (const item of cart.items) {
@@ -601,7 +586,7 @@ export const createOrder = async (request, reply) => {
     console.log(`   Tax (5%): ${taxAmount}`);
     console.log(`   Final: ${finalAmount}`);
     
-    // ========== ✅ FIXED: ALWAYS do ward matching for ALL orders (both Cart and Buy Now) ==========
+    // ========== Ward matching (final pass) ==========
     let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
     
     const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
@@ -622,16 +607,11 @@ export const createOrder = async (request, reply) => {
       }
     }
 
-    if (!wardInfo.wardId) {
-      console.log(`❌ Order REJECTED: Street "${shippingAddress.street}" not found in Karaikudi wards`);
-      return reply.status(400).send({
-        success: false,
-        code: 'STREET_NOT_FOUND',
-        message: `We couldn't verify your address "${shippingAddress.street}". Please enter a valid street name in Karaikudi.`
-      });
+    if (wardInfo.wardId) {
+      console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
+    } else {
+      console.log(`🌍 Non-Karaikudi address — proceeding without ward assignment`);
     }
-
-    console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
     
     const order = await Order.create({
       user: userId,
@@ -640,6 +620,7 @@ export const createOrder = async (request, reply) => {
       wardId: wardInfo.wardId,
       wardName: wardInfo.wardName,
       deliveryZone: wardInfo.deliveryZone,
+      typedArea: typedArea || '',   // ✅ NEW
       paymentMethod,
       paymentId: paymentMethod !== 'cod' ? paymentId : undefined,
       paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
@@ -653,7 +634,7 @@ export const createOrder = async (request, reply) => {
     
     console.log(`\n✅ Order created: ${order.orderId} (sNo: ${order.sNo})`);
     
-    // ========== AUTO-ASSIGN DELIVERY BOY BASED ON WARD ==========
+    // ========== AUTO-ASSIGN BY WARD ==========
     if (order.wardId) {
       try {
         const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
@@ -676,6 +657,32 @@ export const createOrder = async (request, reply) => {
       }
     }
     
+    // ========== ✅ AUTO-ASSIGN BY CITY (non-Karaikudi orders) ==========
+    if (!order.wardId && order.shippingAddress?.city) {
+      try {
+        const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
+        const city = order.shippingAddress.city.trim().toLowerCase();
+
+        const candidates = await DeliveryBoy.find({ status: 'active' });
+
+        const matchedBoy = candidates.find(boy =>
+          (boy.areas || []).some(a => a && a.trim().toLowerCase() === city)
+        );
+
+        if (matchedBoy) {
+          order.deliveryBoy = matchedBoy._id;
+          order.deliveryStatus = 'assigned';
+          order.deliveryAssignedAt = new Date();
+          await order.save();
+          console.log(`✅ Order ${order.orderId} auto-assigned to: ${matchedBoy.name} (City: ${order.shippingAddress.city})`);
+        } else {
+          console.log(`⚠️ No delivery boy covers city "${order.shippingAddress.city}" — leaving unassigned`);
+        }
+      } catch (err) {
+        console.error('Auto-assign (city) error:', err.message);
+      }
+    }
+    
     // Update stock for COD orders
     if (paymentMethod === 'cod') {
       console.log(`\n📦 Updating stock for COD order...`);
@@ -684,28 +691,30 @@ export const createOrder = async (request, reply) => {
       await order.save();
     }
     
-    // ✅ FIX: Only clear cart if NOT in Buy Now mode (skipCartClear is false or undefined)
-    if (!skipCartClear) {
+    // Clear cart if not Buy Now
+    if (!skipCartClear && userId) {
       await Cart.findOneAndUpdate(
         { user: userId }, 
         { $set: { items: [], totalItems: 0, totalPrice: 0, totalOriginalPrice: 0, totalSavings: 0 } }
       );
       console.log(`🗑️ Cart cleared for user ${userId} (normal checkout)`);
     } else {
-      console.log(`🛒 Buy Now mode - Cart NOT cleared for user ${userId} (cart preserved)`);
+      console.log(`🛒 Buy Now mode - Cart NOT cleared`);
     }
     
-    // ========== SEND NOTIFICATIONS - ONLY FOR COD ==========
+    // Notifications for COD
     if (paymentMethod === 'cod') {
       const customerEmail = shippingAddress.email;
       const customerName = shippingAddress.name || 'Customer';
       const customerPhone = shippingAddress.phone;
       
-      try {
-        await sendOrderConfirmationEmail(order, { email: customerEmail, name: customerName });
-        console.log(`📧 Order confirmation email sent to ${customerEmail} (COD)`);
-      } catch (emailError) {
-        console.error('Failed to send order confirmation email:', emailError);
+      if (customerEmail) {
+        try {
+          await sendOrderConfirmationEmail(order, { email: customerEmail, name: customerName });
+          console.log(`📧 Order confirmation email sent to ${customerEmail} (COD)`);
+        } catch (emailError) {
+          console.error('Failed to send order confirmation email:', emailError);
+        }
       }
       
       try {
@@ -717,7 +726,6 @@ export const createOrder = async (request, reply) => {
         console.error('Failed to send order confirmation SMS:', smsError);
       }
     }
-    // For Razorpay orders - NO email here, will be sent after payment success
     
     return reply.status(201).send({
       success: true,
@@ -730,6 +738,7 @@ export const createOrder = async (request, reply) => {
         shippingAddress: order.shippingAddress,
         wardId: order.wardId,
         wardName: order.wardName,
+        typedArea: order.typedArea,   // ✅ NEW
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         orderStatus: order.orderStatus,
@@ -787,7 +796,6 @@ export const updateOrderPaymentSuccess = async (request, reply) => {
       });
     }
 
-    // Update stock for Razorpay payments
     if (order.paymentMethod === 'razorpay') {
       console.log(`📦 Updating stock for order ${order.orderId}`);
       for (const item of order.products) {
@@ -807,7 +815,6 @@ export const updateOrderPaymentSuccess = async (request, reply) => {
       }
     }
 
-    // Update order status
     order.paymentStatus = 'completed';
     order.orderStatus = 'confirmed';
     order.paymentId = paymentId;
@@ -816,7 +823,6 @@ export const updateOrderPaymentSuccess = async (request, reply) => {
 
     console.log(`✅ Order ${order.orderId} updated: paymentStatus=completed, orderStatus=confirmed`);
 
-    // ========== SEND ORDER CONFIRMATION EMAIL & SMS (AFTER PAYMENT SUCCESS) ==========
     const customerEmail = order.shippingAddress?.email;
     const customerPhone = order.shippingAddress?.phone;
     const customerName = order.shippingAddress?.name || order.user?.name || 'Customer';
@@ -1014,20 +1020,16 @@ export const updateOrderStatus = async (request, reply) => {
     const oldStatus = order.orderStatus;
     
     if (orderStatus) {
-      // Handle delivered status
       if (orderStatus === 'delivered' && order.orderStatus !== 'delivered') {
         order.deliveredAt = new Date();
       }
       
-      // Handle cancelled status
       if (orderStatus === 'cancelled' && order.orderStatus !== 'cancelled') {
         order.cancelledAt = new Date();
         if (cancellationReason) order.cancellationReason = cancellationReason;
         await restoreProductStock(order.products);
         
-        // ✅ FIX: Remove delivery boy assignment when cancelled
         order.deliveryStatus = 'unassigned';
-       
         order.deliveryAssignedAt = null;
         order.deliveryPickedUpAt = null;
         order.deliveryDeliveredAt = null;
@@ -1052,10 +1054,12 @@ export const updateOrderStatus = async (request, reply) => {
       const customerName = order.shippingAddress?.name || 'Customer';
       const customerPhone = order.shippingAddress?.phone;
       
-      try {
-        await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus);
-      } catch (emailError) {
-        console.error('Failed to send status update email:', emailError);
+      if (customerEmail) {
+        try {
+          await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus);
+        } catch (emailError) {
+          console.error('Failed to send status update email:', emailError);
+        }
       }
       
       try {
@@ -1085,6 +1089,7 @@ export const updateOrderStatus = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
+
 // ADMIN: Get single order
 export const getAdminOrderById = async (request, reply) => {
   try {
@@ -1118,7 +1123,7 @@ export const getAdminOrderById = async (request, reply) => {
   }
 };
 
-// Print order receipt (JSON) - ✅ ADDED weight display
+// Print order receipt (JSON)
 export const printOrderReceipt = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -1160,6 +1165,8 @@ export const printOrderReceipt = async (request, reply) => {
         id: order.user?._id,
         name: order.user?.name || 'Customer',
       },
+      wardName: order.wardName || null,
+      typedArea: order.typedArea || null,   // ✅ NEW
       shippingAddress: order.shippingAddress,
       items: order.products.map(item => ({
         name: item.name,
@@ -1167,7 +1174,6 @@ export const printOrderReceipt = async (request, reply) => {
         price: item.price,
         total: (item.quantity * item.price).toFixed(2),
         variantName: item.variantName,
-        // ✅ ADD WEIGHT
         weight: item.weight || 0,
         weightUnit: item.weightUnit || 'gram'
       })),
@@ -1200,7 +1206,7 @@ export const printOrderReceipt = async (request, reply) => {
   }
 };
 
-// Print order receipt PDF - ✅ ADDED weight column
+// Print order receipt PDF
 export const printOrderReceiptPDF = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -1240,6 +1246,8 @@ export const printOrderReceiptPDF = async (request, reply) => {
       customer: {
         name: order.user?.name || 'Customer',
       },
+      wardName: order.wardName || null,
+      typedArea: order.typedArea || null,   // ✅ NEW
       shippingAddress: order.shippingAddress,
       items: order.products.map(item => ({
         name: item.name,
@@ -1247,7 +1255,6 @@ export const printOrderReceiptPDF = async (request, reply) => {
         price: item.price,
         total: (item.quantity * item.price).toFixed(2),
         variantName: item.variantName,
-        // ✅ ADD WEIGHT
         weight: item.weight || 0,
         weightUnit: item.weightUnit || 'gram'
       })),
@@ -1279,7 +1286,7 @@ export const printOrderReceiptPDF = async (request, reply) => {
   }
 };
 
-// Helper function to generate PDF buffer - ✅ ADDED weight column in table
+// Helper function to generate PDF buffer
 const generateReceiptPDFBuffer = async (receiptData) => {
   return new Promise(async (resolve, reject) => {
     try {
@@ -1373,21 +1380,31 @@ const addPDFCustomerInfo = (doc, data) => {
   
   doc.font('Helvetica').fontSize(9);
   let toY = doc.y + 10;
-  doc.text(data.customer.name || 'Customer Name', toColumnX, toY, { width: 150 });
-  toY += 15;
+
+  // ✅ Show wardName if exists, else typedArea, else skip
+  if (data.wardName) {
+    doc.text(data.wardName, toColumnX, toY, { width: 150 });
+    toY += 15;
+  } else if (data.typedArea) {
+    doc.text(data.typedArea, toColumnX, toY, { width: 150 });
+    toY += 15;
+  }
   
   if (data.shippingAddress) {
     if (data.shippingAddress.street) {
       doc.text(data.shippingAddress.street, toColumnX, toY, { width: 150 });
-      toY += 20;
+      toY += 15;
     }
-    const cityStateZip = [
-      data.shippingAddress.city,
-      data.shippingAddress.state,
-      data.shippingAddress.postalCode
-    ].filter(Boolean).join(', ');
-    if (cityStateZip) {
-      doc.text(cityStateZip, toColumnX, toY, { width: 150 });
+    if (data.shippingAddress.city) {
+      doc.text(data.shippingAddress.city, toColumnX, toY, { width: 150 });
+      toY += 15;
+    }
+    if (data.shippingAddress.state) {
+      doc.text(data.shippingAddress.state, toColumnX, toY, { width: 150 });
+      toY += 15;
+    }
+    if (data.shippingAddress.postalCode) {
+      doc.text(data.shippingAddress.postalCode, toColumnX, toY, { width: 150 });
       toY += 15;
     }
     if (data.shippingAddress.country) {
@@ -1408,11 +1425,9 @@ const addPDFCustomerInfo = (doc, data) => {
   doc.y = startY + maxHeight + 20;
 };
 
-// ✅ UPDATED PDF items table with WEIGHT column
 const addPDFItemsTable = (doc, data) => {
   const tableTop = doc.y + 10;
   
-  // Table header - ADDED WEIGHT column
   doc.font('Helvetica-Bold')
      .fontSize(9)
      .text('PRODUCT', 50, tableTop)
@@ -1421,16 +1436,15 @@ const addPDFItemsTable = (doc, data) => {
      .text('PRICE', 350, tableTop)
      .text('TOTAL', 450, tableTop);
   
-  // Line under header
   doc.moveTo(50, tableTop + 15)
      .lineTo(550, tableTop + 15)
      .stroke();
   
   let yPosition = tableTop + 25;
   
-  // Table rows with weight
   data.items.forEach((item) => {
-    if (yPosition > 700) {
+    const bottomLimit = doc.page.height - doc.page.margins.bottom - 60;
+    if (yPosition > bottomLimit) {
       doc.addPage();
       yPosition = 50;
     }
@@ -1453,28 +1467,38 @@ const addPDFItemsTable = (doc, data) => {
 };
 
 const addPDFTotals = (doc, data) => {
-  const totalsTop = doc.y;
+  const totalsTop = doc.y + 10;
   
   doc.font('Helvetica')
      .fontSize(9)
      .text(`Subtotal: ${data.pricing.subtotal.toFixed(2)}`, 400, totalsTop)
-     .text(`Tax: ${data.pricing.tax.toFixed(2)}`, 400, totalsTop + 15)
-     .text(`Shipping: ${data.pricing.shipping.toFixed(2)}`, 400, totalsTop + 30);
+     .text(`Tax: ${data.pricing.tax.toFixed(2)}`, 400, totalsTop + 14)
+     .text(`Shipping: ${data.pricing.shipping.toFixed(2)}`, 400, totalsTop + 28);
   
-  doc.moveTo(400, totalsTop + 45)
-     .lineTo(520, totalsTop + 45)
+  doc.moveTo(400, totalsTop + 42)
+     .lineTo(520, totalsTop + 42)
      .stroke();
   
   doc.font('Helvetica-Bold')
      .fontSize(10)
-     .text(`TOTAL: ${data.pricing.total.toFixed(2)}`, 400, totalsTop + 55);
+     .text(`TOTAL: ${data.pricing.total.toFixed(2)}`, 400, totalsTop + 50);
+  
+  doc.y = totalsTop + 65;
 };
 
 const addPDFFooter = (doc) => {
-  doc.y = 750;
+  const bottomLimit = doc.page.height - doc.page.margins.bottom - 30;
+
+  if (doc.y < bottomLimit) {
+    doc.moveDown(2);
+  }
+
   doc.fontSize(8)
      .fillColor('#666666')
-     .text('Thank you for your business!', { align: 'center' });
+     .text('', {
+       align: 'center',
+       width: doc.page.width - doc.page.margins.left - doc.page.margins.right
+     });
 };
 
 // Update order status by orderId
@@ -1512,7 +1536,6 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
       order.cancelledAt = new Date();
       await restoreProductStock(order.products);
       
-      // ✅ FIX: Remove delivery boy assignment when cancelled
       order.deliveryStatus = 'unassigned';
       order.deliveryAssignedAt = null;
       order.deliveryPickedUpAt = null;
@@ -1525,10 +1548,12 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
     const customerName = order.shippingAddress?.name || 'Customer';
     const customerPhone = order.shippingAddress?.phone;
     
-    try {
-      await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus);
-    } catch (emailError) {
-      console.error('Failed to send status update email:', emailError);
+    if (customerEmail) {
+      try {
+        await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus);
+      } catch (emailError) {
+        console.error('Failed to send status update email:', emailError);
+      }
     }
     
     try {
@@ -1601,38 +1626,34 @@ export const cancelOrder = async (request, reply) => {
       });
     }
 
-    // Update order status
     order.orderStatus = 'cancelled';
     order.cancelledAt = new Date();
     
-    // ✅ FIX: Update delivery status but KEEP delivery boy reference
     order.deliveryStatus = 'unassigned';
-    // order.deliveryBoy = null;  // ✅ REMOVED - keep for history
     order.deliveryAssignedAt = null;
     
     if (cancellationReason) {
       order.cancellationReason = cancellationReason;
     }
 
-    // Restore product stock
     await restoreProductStock(order.products);
     await order.save();
 
     console.log(`✅ Order ${order.orderId} cancelled by ${isAdmin ? 'admin' : 'user'}`);
 
-    // Send cancellation email
     const customerEmail = order.shippingAddress?.email;
     const customerName = order.shippingAddress?.name || 'Customer';
     const customerPhone = order.shippingAddress?.phone;
     
-    try {
-      await sendOrderCancellationEmail(order, { email: customerEmail, name: customerName }, cancellationReason, isAdmin ? 'admin' : 'user');
-      console.log(`📧 Cancellation email sent to ${customerEmail}`);
-    } catch (emailError) {
-      console.error('Failed to send cancellation email:', emailError);
+    if (customerEmail) {
+      try {
+        await sendOrderCancellationEmail(order, { email: customerEmail, name: customerName }, cancellationReason, isAdmin ? 'admin' : 'user');
+        console.log(`📧 Cancellation email sent to ${customerEmail}`);
+      } catch (emailError) {
+        console.error('Failed to send cancellation email:', emailError);
+      }
     }
     
-    // Send cancellation SMS
     try {
       if (customerPhone) {
         await sendOrderCancellationSMS(customerPhone, order, cancellationReason);
@@ -1650,7 +1671,7 @@ export const cancelOrder = async (request, reply) => {
         orderId: order.orderId,
         orderStatus: order.orderStatus,
         deliveryStatus: order.deliveryStatus,
-        deliveryBoy: order.deliveryBoy,  // ✅ Will show delivery boy ID
+        deliveryBoy: order.deliveryBoy,
         cancelledAt: order.cancelledAt,
         cancellationReason: order.cancellationReason
       }
@@ -1666,7 +1687,7 @@ export const cancelOrder = async (request, reply) => {
   }
 };
 
-// Delete order (Admin only) - Delete ANY order regardless of status
+// Delete order (Admin only)
 export const deleteOrder = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -1687,7 +1708,6 @@ export const deleteOrder = async (request, reply) => {
       });
     }
 
-    // ✅ NO CHECKS - Delete any order (Pending, Confirmed, Delivered, Cancelled, etc.)
     await order.deleteOne();
     console.log(`✅ Admin deleted order ${order.orderId} (Status: ${order.orderStatus})`);
 
@@ -1704,6 +1724,7 @@ export const deleteOrder = async (request, reply) => {
     });
   }
 };
+
 // Update order payment failed
 export const updateOrderPaymentFailed = async (request, reply) => {
   try {
@@ -1871,12 +1892,10 @@ export const processRefund = async (request, reply) => {
       
       console.log(`✅ Refund processed successfully. Refund ID: ${refund.id}`);
       
-      // ========== SEND REFUND EMAIL & SMS ==========
       const customerEmail = order.shippingAddress?.email;
       const customerName = order.shippingAddress?.name || 'Customer';
       const customerPhone = order.shippingAddress?.phone;
       
-      // Send Refund Email
       if (customerEmail) {
         try {
           await sendOrderRefundEmail(order, { email: customerEmail, name: customerName }, refundAmount, reason);
@@ -1886,7 +1905,6 @@ export const processRefund = async (request, reply) => {
         }
       }
       
-      // Send Refund SMS
       if (customerPhone) {
         try {
           await sendOrderRefundSMS(customerPhone, order, refundAmount, reason);
@@ -1917,7 +1935,6 @@ export const processRefund = async (request, reply) => {
         order.paymentStatus = 'refunded';
         await order.save();
         
-        // Still send notification even if already refunded
         const customerEmail = order.shippingAddress?.email;
         const customerPhone = order.shippingAddress?.phone;
         

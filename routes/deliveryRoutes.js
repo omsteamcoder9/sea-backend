@@ -8,7 +8,8 @@ import {
   markDelivered,
   getProfile,
   updateProfile,
-  getStats
+  getStats,
+  markCodPaid     
 } from '../controllers/deliveryController.js';
 
 // Middleware for delivery boy authentication
@@ -81,7 +82,8 @@ async function deliveryRoutes(fastify, options) {
   fastify.get('/delivery/orders', { preHandler: requireDeliveryAuth }, getMyOrders);
   fastify.get('/delivery/orders/history', { preHandler: requireDeliveryAuth }, getOrderHistory);
   fastify.get('/delivery/orders/:orderId', { preHandler: requireDeliveryAuth }, getOrderDetails);
-  
+  fastify.put('/delivery/orders/:orderId/mark-paid', { preHandler: requireDeliveryAuth }, markCodPaid);   // ✅ NEW
+
   // Order Actions
   fastify.put('/delivery/orders/:orderId/pickup', { preHandler: requireDeliveryAuth }, markPickedUp);
   fastify.put('/delivery/orders/:orderId/deliver', { preHandler: requireDeliveryAuth }, markDelivered);

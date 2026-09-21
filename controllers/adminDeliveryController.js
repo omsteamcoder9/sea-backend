@@ -32,6 +32,79 @@ const getWardNames = (wardIds, wards) => {
   });
 };
 
+// Helper: Normalize areas array (trim, drop empties, remove duplicates)
+const normalizeAreas = (areas) => {
+  if (!Array.isArray(areas)) return [];
+  const cleaned = areas
+    .map(a => (typeof a === 'string' ? a.trim() : ''))
+    .filter(a => a.length > 0);
+  return [...new Set(cleaned)];
+};
+
+// ✅ Helper: Auto-assign unassigned orders to a delivery boy
+const autoAssignOrdersToDeliveryBoy = async (deliveryBoy) => {
+  try {
+    if (!deliveryBoy || deliveryBoy.status !== 'active') {
+      return { assignedCount: 0 };
+    }
+
+    const wardIds = (deliveryBoy.wardIds || []).map(id => parseInt(id));
+    const areas = (deliveryBoy.areas || []).map(a => (a || '').trim().toLowerCase()).filter(Boolean);
+
+    if (wardIds.length === 0 && areas.length === 0) {
+      return { assignedCount: 0 };
+    }
+
+    // Find all unassigned, active orders
+    const unassignedOrders = await Order.find({
+      deliveryStatus: 'unassigned',
+      orderStatus: { $in: ['confirmed', 'processing'] }
+    });
+
+    if (unassignedOrders.length === 0) {
+      return { assignedCount: 0 };
+    }
+
+    let assignedCount = 0;
+    const now = new Date();
+
+    for (const order of unassignedOrders) {
+      let matches = false;
+
+      // Match by wardId
+      if (!matches && order.wardId && wardIds.includes(order.wardId)) {
+        matches = true;
+      }
+
+      // Match by typedArea or shippingAddress.city against boy's areas
+      if (!matches && areas.length > 0) {
+        const candidates = [
+          (order.typedArea || '').trim().toLowerCase(),
+          (order.shippingAddress?.city || '').trim().toLowerCase()
+        ].filter(Boolean);
+
+        if (candidates.some(c => areas.includes(c))) {
+          matches = true;
+        }
+      }
+
+      if (matches) {
+        order.deliveryBoy = deliveryBoy._id;
+        order.deliveryStatus = 'assigned';
+        order.deliveryAssignedAt = now;
+        await order.save();
+        assignedCount++;
+        console.log(`✅ Auto-assigned order ${order.orderId} to ${deliveryBoy.name}`);
+      }
+    }
+
+    return { assignedCount };
+  } catch (error) {
+    console.error('❌ Auto-assign orders error:', error.message);
+    return { assignedCount: 0, error: error.message };
+  }
+};
+
 // Get all delivery boys
 export const getAllDeliveryBoys = async (request, reply) => {
   try {
@@ -79,17 +152,25 @@ export const getDeliveryBoyById = async (request, reply) => {
 // Add new delivery boy
 export const addDeliveryBoy = async (request, reply) => {
   try {
-    const { name, email, phone, password, wardIds, vehicleType, vehicleNumber } = request.body;
+    const { name, email, phone, password, wardIds, areas, vehicleType, vehicleNumber } = request.body;
     
-    // Validation
-    if (!name || !email || !phone || !password || !wardIds || !wardIds.length) {
+    const hasWards = Array.isArray(wardIds) && wardIds.length > 0;
+    const hasAreas = Array.isArray(areas) && areas.length > 0;
+
+    if (!name || !email || !phone || !password) {
       return reply.status(400).send({ 
         success: false, 
-        message: 'Name, email, phone, password and at least one ward are required' 
+        message: 'Name, email, phone and password are required' 
+      });
+    }
+
+    if (!hasWards && !hasAreas) {
+      return reply.status(400).send({ 
+        success: false, 
+        message: 'Provide at least one ward or one area' 
       });
     }
     
-    // Check if phone or email already exists
     const existing = await DeliveryBoy.findOne({ $or: [{ phone }, { email }] });
     if (existing) {
       return reply.status(400).send({ 
@@ -100,16 +181,18 @@ export const addDeliveryBoy = async (request, reply) => {
     
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // Get ward names from IDs
-    const wardNames = getWardNames(wardIds, wardsList);
+    const normalizedWardIds = hasWards ? wardIds.map(id => parseInt(id)) : [];
+    const wardNames = getWardNames(normalizedWardIds, wardsList);
+    const normalizedAreas = normalizeAreas(areas);
     
     const deliveryBoy = new DeliveryBoy({
       name,
       email,
       phone,
       password: hashedPassword,
-      wardIds: wardIds.map(id => parseInt(id)),
+      wardIds: normalizedWardIds,
       wardNames: wardNames,
+      areas: normalizedAreas,
       vehicleType: vehicleType || 'bike',
       vehicleNumber: vehicleNumber || '',
       status: 'active',
@@ -117,17 +200,27 @@ export const addDeliveryBoy = async (request, reply) => {
     });
     
     await deliveryBoy.save();
+
+    // ✅ Auto-assign existing unassigned orders matching this new delivery boy
+    const { assignedCount } = await autoAssignOrdersToDeliveryBoy(deliveryBoy);
+    if (assignedCount > 0) {
+      console.log(`🎯 Auto-assigned ${assignedCount} existing order(s) to ${deliveryBoy.name}`);
+    }
     
     return reply.status(201).send({ 
       success: true, 
-      message: 'Delivery boy added successfully',
+      message: assignedCount > 0
+        ? `Delivery boy added successfully. ${assignedCount} existing order(s) auto-assigned.`
+        : 'Delivery boy added successfully',
+      autoAssignedCount: assignedCount,
       deliveryBoy: {
         id: deliveryBoy._id,
         name: deliveryBoy.name,
         email: deliveryBoy.email,
         phone: deliveryBoy.phone,
         wardIds: deliveryBoy.wardIds,
-        wardNames: deliveryBoy.wardNames
+        wardNames: deliveryBoy.wardNames,
+        areas: deliveryBoy.areas
       }
     });
   } catch (error) {
@@ -143,7 +236,7 @@ export const addDeliveryBoy = async (request, reply) => {
 export const updateDeliveryBoy = async (request, reply) => {
   try {
     const { id } = request.params;
-    const { name, email, phone, wardIds, vehicleType, vehicleNumber, status, password } = request.body;
+    const { name, email, phone, wardIds, areas, vehicleType, vehicleNumber, status, password } = request.body;
     
     const deliveryBoy = await DeliveryBoy.findById(id);
     if (!deliveryBoy) {
@@ -153,13 +246,16 @@ export const updateDeliveryBoy = async (request, reply) => {
       });
     }
     
-    // Update fields
     if (name) deliveryBoy.name = name;
     if (email) deliveryBoy.email = email;
     if (phone) deliveryBoy.phone = phone;
-    if (wardIds && wardIds.length) {
-      deliveryBoy.wardIds = wardIds.map(id => parseInt(id));
-      deliveryBoy.wardNames = getWardNames(deliveryBoy.wardIds, wardsList);
+    if (wardIds !== undefined) {
+      const normalizedWardIds = Array.isArray(wardIds) ? wardIds.map(id => parseInt(id)) : [];
+      deliveryBoy.wardIds = normalizedWardIds;
+      deliveryBoy.wardNames = getWardNames(normalizedWardIds, wardsList);
+    }
+    if (areas !== undefined) {
+      deliveryBoy.areas = normalizeAreas(areas);
     }
     if (vehicleType) deliveryBoy.vehicleType = vehicleType;
     if (vehicleNumber) deliveryBoy.vehicleNumber = vehicleNumber;
@@ -169,10 +265,23 @@ export const updateDeliveryBoy = async (request, reply) => {
     }
     
     await deliveryBoy.save();
+
+    // ✅ Auto-assign existing unassigned orders (if boy is active)
+    let assignedCount = 0;
+    if (deliveryBoy.status === 'active') {
+      const result = await autoAssignOrdersToDeliveryBoy(deliveryBoy);
+      assignedCount = result.assignedCount;
+      if (assignedCount > 0) {
+        console.log(`🎯 Auto-assigned ${assignedCount} existing order(s) to ${deliveryBoy.name} (after update)`);
+      }
+    }
     
     return reply.status(200).send({ 
       success: true, 
-      message: 'Delivery boy updated successfully',
+      message: assignedCount > 0
+        ? `Delivery boy updated successfully. ${assignedCount} existing order(s) auto-assigned.`
+        : 'Delivery boy updated successfully',
+      autoAssignedCount: assignedCount,
       deliveryBoy: {
         id: deliveryBoy._id,
         name: deliveryBoy.name,
@@ -180,6 +289,7 @@ export const updateDeliveryBoy = async (request, reply) => {
         phone: deliveryBoy.phone,
         wardIds: deliveryBoy.wardIds,
         wardNames: deliveryBoy.wardNames,
+        areas: deliveryBoy.areas,
         status: deliveryBoy.status
       }
     });
@@ -205,7 +315,6 @@ export const deleteDeliveryBoy = async (request, reply) => {
       });
     }
     
-    // Check if delivery boy has any assigned orders
     const assignedOrders = await Order.countDocuments({ 
       deliveryBoy: id, 
       deliveryStatus: { $in: ['assigned', 'picked_up'] } 
@@ -326,13 +435,13 @@ export const assignOrderToDeliveryBoy = async (request, reply) => {
     });
   }
 };
+
 export const getDeliveryBoyStats = async (request, reply) => {
   try {
     const { id } = request.params;
     
     console.log(`📊 Fetching stats for delivery boy ID: ${id}`);
     
-    // Find delivery boy
     const deliveryBoy = await DeliveryBoy.findById(id);
     if (!deliveryBoy) {
       console.log(`❌ Delivery boy not found: ${id}`);
@@ -342,7 +451,6 @@ export const getDeliveryBoyStats = async (request, reply) => {
       });
     }
     
-    // ✅ LOG THE ACTUAL DATA FROM DATABASE
     console.log('✅ Delivery boy from DB:', {
       id: deliveryBoy._id,
       name: deliveryBoy.name,
@@ -351,19 +459,18 @@ export const getDeliveryBoyStats = async (request, reply) => {
       status: deliveryBoy.status,
       wardIds: deliveryBoy.wardIds,
       wardNames: deliveryBoy.wardNames,
+      areas: deliveryBoy.areas,
       totalDeliveries: deliveryBoy.totalDeliveries,
       totalEarnings: deliveryBoy.totalEarnings,
       createdAt: deliveryBoy.createdAt
     });
     
-    // Get ALL orders assigned to this delivery boy
     const allOrders = await Order.find({ 
       deliveryBoy: id 
     }).sort({ createdAt: -1 });
     
     console.log(`📦 Total orders found: ${allOrders.length}`);
     
-    // Calculate statistics
     const totalOrders = allOrders.length;
     const deliveredOrders = allOrders.filter(o => o.deliveryStatus === 'delivered').length;
     const cancelledOrders = allOrders.filter(o => o.orderStatus === 'cancelled').length;
@@ -372,10 +479,8 @@ export const getDeliveryBoyStats = async (request, reply) => {
       o.orderStatus !== 'cancelled'
     ).length;
     
-    // Recent orders
     const recentOrders = allOrders.slice(0, 10);
     
-    // ✅ MAKE SURE TO RETURN ACTUAL DATABASE VALUES, NOT DEFAULTS
     return reply.status(200).send({
       success: true,
       stats: {
@@ -389,17 +494,18 @@ export const getDeliveryBoyStats = async (request, reply) => {
       recentOrders,
       deliveryBoy: {
         id: deliveryBoy._id,
-        name: deliveryBoy.name,  // Should be "Ajay"
-        email: deliveryBoy.email,  // Should be "Ajay1@example.com"
-        phone: deliveryBoy.phone,  // Should be "7092514027"
-        wardIds: deliveryBoy.wardIds || [],  // Should be [1, 2]
-        wardNames: deliveryBoy.wardNames || [],  // Should be ward names
+        name: deliveryBoy.name,
+        email: deliveryBoy.email,
+        phone: deliveryBoy.phone,
+        wardIds: deliveryBoy.wardIds || [],
+        wardNames: deliveryBoy.wardNames || [],
+        areas: deliveryBoy.areas || [],
         vehicleType: deliveryBoy.vehicleType || 'Not specified',
         vehicleNumber: deliveryBoy.vehicleNumber || '',
-        status: deliveryBoy.status || 'inactive',  // Should be "active"
+        status: deliveryBoy.status || 'inactive',
         totalDeliveries: deliveryBoy.totalDeliveries || 0,
         totalEarnings: deliveryBoy.totalEarnings || 0,
-        joinedAt: deliveryBoy.createdAt  // Should have a date
+        joinedAt: deliveryBoy.createdAt
       }
     });
     

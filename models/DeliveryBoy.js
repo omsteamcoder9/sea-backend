@@ -5,11 +5,14 @@ const deliveryBoySchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   phone: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  
-  // ✅ CHANGED: Single wardId to array of wardIds
-  wardIds: { type: [Number], required: true, default: [] },  // Example: [1, 2, 3]
-  wardNames: { type: [String], default: [] },  // Store ward names for display
-  
+
+  // ✅ Karaikudi wards (existing)
+  wardIds: { type: [Number], default: [] },   // Example: [1, 2, 3]
+  wardNames: { type: [String], default: [] }, // Ward names for display
+
+  // ✅ NEW: Free-text areas for non-Karaikudi delivery (e.g. "Neyyoor", "Kanyakumari")
+  areas: { type: [String], default: [] },
+
   vehicleType: { type: String, enum: ['bike', 'car', 'scooter'], default: 'bike' },
   vehicleNumber: { type: String, default: '' },
   status: { type: String, enum: ['active', 'inactive'], default: 'active' },

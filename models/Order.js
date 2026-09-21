@@ -18,12 +18,12 @@ const orderSchema = new mongoose.Schema({
     discountPercentage: { type: Number, default: 0 },
     name: { type: String, required: true },
     image: { type: String },
-    // ✅ ADD THESE WEIGHT FIELDS
+    // ✅ WEIGHT FIELDS
     weight: { type: Number, default: 0 },
     weightUnit: { type: String, default: 'gram' }
   }],
   
-  // Shipping - WITH EMAIL FIELD
+  // Shipping
   shippingAddress: {
     street: { type: String, required: true },
     city: { type: String, required: true },
@@ -31,13 +31,16 @@ const orderSchema = new mongoose.Schema({
     postalCode: { type: String, required: true },
     country: { type: String, required: true },
     phone: { type: String, required: true },
-    email: { type: String, required: true }
+    email: { type: String, required: false, default: '' }
   },
   
   // Ward Info
   wardId: { type: Number },
   wardName: { type: String },
   deliveryZone: { type: String },
+  
+  // ✅ NEW: Raw area text the user typed in the "Area" field
+  typedArea: { type: String, default: '' },
   
   // Payment
   paymentMethod: { type: String, enum: ['cod', 'razorpay', 'card'], required: true },
@@ -69,9 +72,6 @@ const orderSchema = new mongoose.Schema({
   cancelledAt: { type: Date },
   cancellationReason: { type: String },
   deliveredAt: { type: Date },
-
-
-  // Add these fields inside your orderSchema (anywhere, suggested near payment fields):
 
   // Delivery Boy Fields
   deliveryBoy: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryBoy', default: null },

@@ -16,14 +16,14 @@ import {
   printOrderReceiptPDF,
   processRefund  // ADD THIS IMPORT
 } from '../controllers/orderController.js';
-import { requireStrictAuth } from '../controllers/authController.js';
+import { requireStrictAuth, requireAuth } from '../controllers/authController.js';
 
 async function orderRoutes(fastify, options) {
   
   // ========== USER ROUTES ==========
   
-  // Create order (authenticated users only)
-  fastify.post('/orders', { preHandler: requireStrictAuth }, createOrder);
+  // Create order (guest OR authenticated users)
+  fastify.post('/orders', { preHandler: requireAuth }, createOrder);
   
   // Get user's orders (authenticated users only)
   fastify.get('/orders/my-orders', { preHandler: requireStrictAuth }, getUserOrders);
@@ -33,13 +33,15 @@ async function orderRoutes(fastify, options) {
   
   // Cancel order (user can cancel their own order)
   fastify.put('/orders/:id/cancel', { preHandler: requireStrictAuth }, cancelOrder);
+
   // Get order by Razorpay order ID
-// Used by Flutter to recover payment status if verification response is interrupted
-fastify.get(
-  '/orders/razorpay/:razorpayOrderId',
-  { preHandler: requireStrictAuth },
-  getOrderByRazorpayOrderId
-);
+  // Used by Flutter to recover payment status if verification response is interrupted
+  fastify.get(
+    '/orders/razorpay/:razorpayOrderId',
+    { preHandler: requireStrictAuth },
+    getOrderByRazorpayOrderId
+  );
+
   // Print order receipt (JSON)
   fastify.get('/orders/:id/receipt', { preHandler: requireStrictAuth }, printOrderReceipt);
   
