@@ -23,7 +23,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ============================================================
-// ✅ NORMALIZER: convert any ward shape to internal shape
+// ✅ NORMALIZER
 // ============================================================
 const normalizeWard = (ward) => {
   const wardId = ward.wardId !== undefined ? ward.wardId : ward.ward_no;
@@ -39,9 +39,9 @@ const normalizeWard = (ward) => {
 };
 
 // ============================================================
-// ✅ LOAD all city ward files into a Map
+// ✅ LOAD city ward files
 // ============================================================
-const citiesWards = new Map(); // cityKey → { city, wards, streetToWardMap }
+const citiesWards = new Map();
 
 const loadCityWards = (cityKey, filePath) => {
   try {
@@ -79,7 +79,7 @@ loadCityWards('karaikudi', path.join(__dirname, '../data/Karaikudi_Wards.json'))
 loadCityWards('pudukkottai', path.join(__dirname, '../data/Pudukkottai_Wards.json'));
 
 // ============================================================
-// Pick city ward list based on shippingAddress.city
+// City context
 // ============================================================
 const getCityContext = (city) => {
   if (!city) return null;
@@ -517,16 +517,15 @@ export const createOrder = async (request, reply) => {
       console.log(`🌍 No ward assigned`);
     }
 
-    // ✅ Save customer name at both top-level and inside shippingAddress
     const customerName = shippingAddress.name || 'Customer';
 
     const order = await Order.create({
       user: userId,
-      name: customerName,                            // ✅ top-level name
+      name: customerName,
       products,
       shippingAddress: {
         ...shippingAddress,
-        name: shippingAddress.name || ''             // ✅ keep inside shippingAddress too
+        name: shippingAddress.name || ''
       },
       wardId: wardInfo.wardId,
       wardName: wardInfo.wardName,
@@ -545,50 +544,7 @@ export const createOrder = async (request, reply) => {
 
     console.log(`✅ Order created: ${order.orderId}`);
 
-    // AUTO-ASSIGN by ward (city-aware)
-    if (order.wardId) {
-      try {
-        const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
-        const orderCity = (order.shippingAddress?.city || '').trim().toLowerCase();
-
-        const candidates = await DeliveryBoy.find({
-          wardIds: { $in: [order.wardId] },
-          status: 'active'
-        });
-
-        const deliveryBoy = candidates.find(boy => {
-          const boyCity = (boy.city || '').trim().toLowerCase();
-          return !boyCity || !orderCity || orderCity.includes(boyCity);
-        });
-
-        if (deliveryBoy) {
-          order.deliveryBoy = deliveryBoy._id;
-          order.deliveryStatus = 'assigned';
-          order.deliveryAssignedAt = new Date();
-          await order.save();
-          console.log(`✅ Auto-assigned (ward) to ${deliveryBoy.name}`);
-        }
-      } catch (err) { console.error('Auto-assign ward error:', err.message); }
-    }
-
-    // AUTO-ASSIGN by city
-    if (!order.deliveryBoy && order.shippingAddress?.city) {
-      try {
-        const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
-        const city = order.shippingAddress.city.trim().toLowerCase();
-        const candidates = await DeliveryBoy.find({ status: 'active' });
-        const matchedBoy = candidates.find(boy =>
-          (boy.areas || []).some(a => a && a.trim().toLowerCase() === city)
-        );
-        if (matchedBoy) {
-          order.deliveryBoy = matchedBoy._id;
-          order.deliveryStatus = 'assigned';
-          order.deliveryAssignedAt = new Date();
-          await order.save();
-          console.log(`✅ Auto-assigned (city) to ${matchedBoy.name}`);
-        }
-      } catch (err) { console.error('Auto-assign city error:', err.message); }
-    }
+    // ❌ AUTO-ASSIGN REMOVED — admin assigns manually
 
     if (paymentMethod === 'cod') {
       await updateProductStock(products);
@@ -623,7 +579,7 @@ export const createOrder = async (request, reply) => {
         _id: order._id,
         orderId: order.orderId,
         sNo: order.sNo,
-        name: order.name,                         // ✅ return name
+        name: order.name,
         products: order.products,
         shippingAddress: order.shippingAddress,
         wardId: order.wardId,
@@ -794,6 +750,7 @@ export const updateOrderStatus = async (request, reply) => {
         if (cancellationReason) order.cancellationReason = cancellationReason;
         await restoreProductStock(order.products);
         order.deliveryStatus = 'unassigned';
+        order.deliveryBoy = null;
         order.deliveryAssignedAt = null;
         order.deliveryPickedUpAt = null;
         order.deliveryDeliveredAt = null;
@@ -869,7 +826,7 @@ export const printOrderReceipt = async (request, reply) => {
       orderNumber: order.orderId || order._id.toString(),
       date: order.createdAt,
       store: { name: storeSettings.siteName, email: storeSettings.contactEmail, phone: storeSettings.contactNumber, address: storeSettings.companyAddress },
-      customer: { id: order.user?._id, name: customerName },     // ✅ uses order.name first
+      customer: { id: order.user?._id, name: customerName },
       wardName: order.wardName || null,
       typedArea: order.typedArea || null,
       shippingAddress: order.shippingAddress,
@@ -911,7 +868,7 @@ export const printOrderReceiptPDF = async (request, reply) => {
       orderNumber: order.orderId || order._id.toString(),
       date: order.createdAt,
       store: { name: storeSettings.siteName, email: storeSettings.contactEmail, phone: storeSettings.contactNumber, address: storeSettings.companyAddress },
-      customer: { name: customerName },                          // ✅ uses order.name first
+      customer: { name: customerName },
       wardName: order.wardName || null,
       typedArea: order.typedArea || null,
       shippingAddress: order.shippingAddress,
@@ -935,7 +892,7 @@ export const printOrderReceiptPDF = async (request, reply) => {
 };
 
 // ============================================================
-// PDF helpers
+// PDF helpers (unchanged)
 // ============================================================
 const generateReceiptPDFBuffer = async (receiptData) => {
   return new Promise(async (resolve, reject) => {
@@ -968,181 +925,65 @@ const addPDFCustomerInfo = (doc, data) => {
   const pageWidth = doc.page.width;
   const leftMargin = doc.page.margins.left;
   const rightMargin = doc.page.margins.right;
-
-  // ============================================================
-  // COLUMN POSITIONS
-  // ============================================================
-
   const startX = leftMargin;
   const startY = doc.y;
-
-  // FROM column
   const fromWidth = 150;
-
-  // ORDER column
   const orderColumnX = 235;
   const orderWidth = 145;
-
-  // TO column
   const toColumnX = 415;
   const toWidth = pageWidth - rightMargin - toColumnX;
 
-  // ============================================================
-  // FROM
-  // ============================================================
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(10)
-    .fillColor('#000000')
-    .text('FROM:', startX, startY);
-
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text('FROM:', startX, startY);
   let fromY = startY + 18;
-
-  doc
-    .font('Helvetica')
-    .fontSize(9)
-    .fillColor('#333333');
+  doc.font('Helvetica').fontSize(9).fillColor('#333333');
 
   const fromLines = [
     data.store?.name,
-    ...(data.store?.address
-      ? data.store.address
-          .split(',')
-          .map(line => line.trim())
-          .filter(Boolean)
-      : []),
+    ...(data.store?.address ? data.store.address.split(',').map(line => line.trim()).filter(Boolean) : []),
     data.store?.phone ? `Phone: ${data.store.phone}` : null,
     data.store?.email ? `Email: ${data.store.email}` : null,
   ].filter(Boolean);
 
   for (const line of fromLines) {
-    doc.text(line, startX, fromY, {
-      width: fromWidth,
-      lineGap: 2,
-    });
-
-    const lineHeight = doc.heightOfString(line, {
-      width: fromWidth,
-      lineGap: 2,
-    });
-
+    doc.text(line, startX, fromY, { width: fromWidth, lineGap: 2 });
+    const lineHeight = doc.heightOfString(line, { width: fromWidth, lineGap: 2 });
     fromY += lineHeight + 4;
   }
 
-  // ============================================================
-  // ORDER DETAILS
-  // ============================================================
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(10)
-    .fillColor('#000000')
-    .text('ORDER RECEIPT', orderColumnX, startY, {
-      width: orderWidth,
-    });
-
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text('ORDER RECEIPT', orderColumnX, startY, { width: orderWidth });
   let orderY = startY + 18;
 
   const orderDetails = [
-    data.orderNumber
-      ? `Order #: ${data.orderNumber}`
-      : null,
-
-    data.date
-      ? `Date: ${new Date(data.date).toLocaleDateString('en-IN')}`
-      : null,
-
-    data.payment?.method
-      ? `Payment: ${String(data.payment.method).toUpperCase()}`
-      : null,
-
-    data.payment?.status
-      ? `Status: ${String(data.payment.status).toUpperCase()}`
-      : null,
+    data.orderNumber ? `Order #: ${data.orderNumber}` : null,
+    data.date ? `Date: ${new Date(data.date).toLocaleDateString('en-IN')}` : null,
+    data.payment?.method ? `Payment: ${String(data.payment.method).toUpperCase()}` : null,
+    data.payment?.status ? `Status: ${String(data.payment.status).toUpperCase()}` : null,
   ].filter(Boolean);
 
-  doc
-    .font('Helvetica')
-    .fontSize(9)
-    .fillColor('#333333');
-
+  doc.font('Helvetica').fontSize(9).fillColor('#333333');
   for (const line of orderDetails) {
-    doc.text(line, orderColumnX, orderY, {
-      width: orderWidth,
-      lineGap: 2,
-    });
-
-    const lineHeight = doc.heightOfString(line, {
-      width: orderWidth,
-      lineGap: 2,
-    });
-
+    doc.text(line, orderColumnX, orderY, { width: orderWidth, lineGap: 2 });
+    const lineHeight = doc.heightOfString(line, { width: orderWidth, lineGap: 2 });
     orderY += lineHeight + 5;
   }
 
-  // ============================================================
-  // TO / CUSTOMER
-  // ============================================================
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(10)
-    .fillColor('#000000')
-    .text('TO:', toColumnX, startY, {
-      width: toWidth,
-    });
-
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text('TO:', toColumnX, startY, { width: toWidth });
   let toY = startY + 18;
-
-  doc
-    .font('Helvetica')
-    .fontSize(9)
-    .fillColor('#333333');
-
-  // ------------------------------------------------------------
-  // Helper to print one address line
-  // Automatically wraps if the text is long.
-  // ------------------------------------------------------------
+  doc.font('Helvetica').fontSize(9).fillColor('#333333');
 
   const printToLine = (text, options = {}) => {
     if (!text) return;
-
     const fontSize = options.fontSize || 9;
     const bold = options.bold || false;
-
-    doc
-      .font(bold ? 'Helvetica-Bold' : 'Helvetica')
-      .fontSize(fontSize);
-
-    doc.text(text, toColumnX, toY, {
-      width: toWidth,
-      lineGap: 2,
-      align: 'left',
-    });
-
-    const lineHeight = doc.heightOfString(text, {
-      width: toWidth,
-      lineGap: 2,
-    });
-
+    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+    doc.text(text, toColumnX, toY, { width: toWidth, lineGap: 2, align: 'left' });
+    const lineHeight = doc.heightOfString(text, { width: toWidth, lineGap: 2 });
     toY += lineHeight + 4;
   };
 
-  // ============================================================
-  // CUSTOMER NAME
-  // ============================================================
-
   if (data.customer?.name) {
-    printToLine(data.customer.name, {
-      bold: true,
-      fontSize: 9,
-    });
+    printToLine(data.customer.name, { bold: true, fontSize: 9 });
   }
-
-  // ============================================================
-  // WARD / AREA
-  // ============================================================
 
   if (data.wardName) {
     printToLine(data.wardName);
@@ -1150,51 +991,17 @@ const addPDFCustomerInfo = (doc, data) => {
     printToLine(data.typedArea);
   }
 
-  // ============================================================
-  // SHIPPING ADDRESS
-  // ============================================================
-
   if (data.shippingAddress) {
-
-    if (data.shippingAddress.street) {
-      printToLine(data.shippingAddress.street);
-    }
-
-    if (data.shippingAddress.city) {
-      printToLine(data.shippingAddress.city);
-    }
-
-    if (data.shippingAddress.state) {
-      printToLine(data.shippingAddress.state);
-    }
-
-    if (data.shippingAddress.postalCode) {
-      printToLine(data.shippingAddress.postalCode);
-    }
-
-    if (data.shippingAddress.country) {
-      printToLine(data.shippingAddress.country);
-    }
-
-    if (data.shippingAddress.phone) {
-      printToLine(`Phone: ${data.shippingAddress.phone}`);
-    }
-
-    if (data.shippingAddress.email) {
-      printToLine(`Email: ${data.shippingAddress.email}`);
-    }
+    if (data.shippingAddress.street) printToLine(data.shippingAddress.street);
+    if (data.shippingAddress.city) printToLine(data.shippingAddress.city);
+    if (data.shippingAddress.state) printToLine(data.shippingAddress.state);
+    if (data.shippingAddress.postalCode) printToLine(data.shippingAddress.postalCode);
+    if (data.shippingAddress.country) printToLine(data.shippingAddress.country);
+    if (data.shippingAddress.phone) printToLine(`Phone: ${data.shippingAddress.phone}`);
+    if (data.shippingAddress.email) printToLine(`Email: ${data.shippingAddress.email}`);
   }
 
-  // ============================================================
-  // MOVE CURSOR BELOW THE TALLEST COLUMN
-  // ============================================================
-
-  const maxColumnHeight = Math.max(
-    fromY,
-    orderY,
-    toY
-  );
-
+  const maxColumnHeight = Math.max(fromY, orderY, toY);
   doc.y = maxColumnHeight + 20;
 };
 
@@ -1267,6 +1074,7 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
       order.cancelledAt = new Date();
       await restoreProductStock(order.products);
       order.deliveryStatus = 'unassigned';
+      order.deliveryBoy = null;
       order.deliveryAssignedAt = null;
       order.deliveryPickedUpAt = null;
       order.deliveryDeliveredAt = null;
@@ -1320,6 +1128,7 @@ export const cancelOrder = async (request, reply) => {
     order.orderStatus = 'cancelled';
     order.cancelledAt = new Date();
     order.deliveryStatus = 'unassigned';
+    order.deliveryBoy = null;
     order.deliveryAssignedAt = null;
     if (cancellationReason) order.cancellationReason = cancellationReason;
 
@@ -1371,6 +1180,8 @@ export const updateOrderPaymentFailed = async (request, reply) => {
     if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
     order.paymentStatus = 'failed';
     order.orderStatus = 'cancelled';
+    order.deliveryBoy = null;
+    order.deliveryStatus = 'unassigned';
     await order.save();
     return reply.status(200).send({ success: true, message: 'Payment marked failed', order });
   } catch (error) {

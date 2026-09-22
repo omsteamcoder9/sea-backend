@@ -424,7 +424,338 @@ export const getDeliveryBoyStats = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
+// ============================================================
+// ✅ ADMIN: Edit order address / ward / city / typedArea
+// + Auto-reassign delivery boy based on new ward
+// ============================================================
+export const editOrderAddress = async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const {
+      name,
+      phone,
+      city,
+      wardId,
+      typedArea,
+      street,
+      postalCode,
+      state,
+      country,
+      email,
+    } = request.body;
 
+    const order = await Order.findById(id);
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
+
+    const previousWardId = order.wardId;
+
+    // ---------- customer name ----------
+    if (name !== undefined) {
+      order.name = name || '';
+      if (!order.shippingAddress) order.shippingAddress = {};
+      order.shippingAddress.name = name || '';
+    }
+
+    // ---------- shipping address fields ----------
+    if (!order.shippingAddress) order.shippingAddress = {};
+
+    if (phone !== undefined) order.shippingAddress.phone = phone || '';
+    if (street !== undefined) order.shippingAddress.street = street || '';
+    if (postalCode !== undefined) order.shippingAddress.postalCode = postalCode || '';
+    if (state !== undefined) order.shippingAddress.state = state || '';
+    if (country !== undefined) order.shippingAddress.country = country || '';
+    if (email !== undefined) order.shippingAddress.email = email || '';
+
+    // ---------- city ----------
+    if (city !== undefined) {
+      order.shippingAddress.city = (city || '').trim();
+    }
+
+    // ---------- typed area ----------
+    if (typedArea !== undefined) {
+      order.typedArea = (typedArea || '').trim();
+    }
+
+    // ---------- ward (wardId + wardName) ----------
+    if (wardId !== undefined) {
+      const incoming = (wardId === '' || wardId === null) ? null : wardId;
+
+      if (incoming === null) {
+        order.wardId = null;
+        order.wardName = null;
+      } else {
+        const normalizedCity = (order.shippingAddress?.city || '').trim().toLowerCase();
+        const ctx = normalizedCity ? citiesWards.get(normalizedCity) : null;
+
+        let matched = null;
+        if (ctx) {
+          matched = ctx.wards.find(w => String(w.wardId) === String(incoming));
+        }
+        if (!matched) {
+          matched = getAllWards().find(w => String(w.wardId) === String(incoming));
+        }
+
+        if (matched) {
+          order.wardId = matched.wardId;
+          order.wardName = matched.wardName;
+        } else {
+          const num = isNaN(Number(incoming)) ? incoming : parseInt(incoming);
+          order.wardId = num;
+          order.wardName = `Ward ${num}`;
+        }
+      }
+    }
+
+    if (order.deliveryZone === undefined || order.deliveryZone === null) {
+      order.deliveryZone = 'standard';
+    }
+
+    // ============================================================
+    // ✅ AUTO-REASSIGN delivery boy when ward changed
+    // ============================================================
+    const wardChanged = previousWardId !== order.wardId;
+
+    let reassignedTo = null;
+    let oldBoyId = null;
+
+    if (wardChanged && order.wardId) {
+      oldBoyId = order.deliveryBoy || null;
+
+      const normalizedCity = (order.shippingAddress?.city || '').trim().toLowerCase();
+
+      // Find an active delivery boy whose wardIds contains this ward
+      const candidates = await DeliveryBoy.find({
+        status: 'active',
+        wardIds: { $in: [order.wardId] }
+      });
+
+      // Prefer a boy whose city matches the order's city
+      let matchedBoy = null;
+      if (normalizedCity) {
+        matchedBoy = candidates.find(boy => {
+          const boyCity = (boy.city || '').trim().toLowerCase();
+          return boyCity && boyCity === normalizedCity;
+        });
+      }
+      // fallback: any active boy with that ward
+      if (!matchedBoy && candidates.length > 0) {
+        matchedBoy = candidates[0];
+      }
+
+      if (matchedBoy) {
+        // Only reassign if it's actually a different boy
+        if (!oldBoyId || String(oldBoyId) !== String(matchedBoy._id)) {
+          order.deliveryBoy = matchedBoy._id;
+          order.deliveryStatus = 'assigned';
+          order.deliveryAssignedAt = new Date();
+          order.deliveryPickedUpAt = null;
+          order.deliveryDeliveredAt = null;
+          reassignedTo = matchedBoy;
+        }
+      } else {
+        // No boy handles the new ward → unassign so it doesn't sit with the wrong boy
+        order.deliveryBoy = null;
+        order.deliveryStatus = 'unassigned';
+        order.deliveryAssignedAt = null;
+        order.deliveryPickedUpAt = null;
+        order.deliveryDeliveredAt = null;
+      }
+    }
+
+    await order.save();
+
+    console.log(`✏️ Order ${order.orderId} address updated`);
+    if (reassignedTo) {
+      console.log(`🔁 Auto-reassigned to ${reassignedTo.name} (Ward ${order.wardId})`);
+    } else if (wardChanged && !order.deliveryBoy) {
+      console.log(`🚫 No delivery boy for Ward ${order.wardId} → order unassigned`);
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: reassignedTo
+        ? `Address updated. Reassigned to ${reassignedTo.name}`
+        : 'Address updated',
+      reassigned: !!reassignedTo,
+      reassignedTo: reassignedTo
+        ? { _id: reassignedTo._id, name: reassignedTo.name, phone: reassignedTo.phone, city: reassignedTo.city, wardIds: reassignedTo.wardIds }
+        : null,
+      order: {
+        _id: order._id,
+        orderId: order.orderId,
+        name: order.name,
+        wardId: order.wardId,
+        wardName: order.wardName,
+        typedArea: order.typedArea,
+        shippingAddress: order.shippingAddress,
+        deliveryBoy: order.deliveryBoy
+          ? { _id: order.deliveryBoy, name: reassignedTo?.name || null }
+          : null,
+        deliveryStatus: order.deliveryStatus,
+        deliveryAssignedAt: order.deliveryAssignedAt,
+      },
+    });
+  } catch (error) {
+    console.error('Edit order address error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+// ============================================================
+// ✅ ADMIN: Download today's orders PDF (simple list)
+// ============================================================
+export const downloadTodayOrdersPDF = async (request, reply) => {
+  try {
+    const PDFDocument = (await import('pdfkit')).default;
+
+    // ---------- Today's range (server local time) ----------
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    // Tomorrow (for the header line)
+    const tomorrow = new Date(startOfDay);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const fmtLong = (d) => d.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const fmtShort = (d) => d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
+
+    // ---------- Fetch today's orders ----------
+    const orders = await Order.find({
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+      orderStatus: { $ne: 'cancelled' }
+    }).sort({ createdAt: 1 });
+
+    // ---------- Build PDF ----------
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const buffers = [];
+    doc.on('data', buffers.push.bind(buffers));
+
+    const pdfBuffer = await new Promise((resolve, reject) => {
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      const pageWidth = doc.page.width;
+      const leftMargin = doc.page.margins.left;
+      const rightMargin = doc.page.margins.right;
+      const contentWidth = pageWidth - leftMargin - rightMargin;
+
+      // ===== Header =====
+      doc.font('Helvetica-Bold').fontSize(20).fillColor('#1a237e')
+        .text("TODAY'S ORDERS", { align: 'center' });
+      doc.moveDown(0.3);
+
+      doc.font('Helvetica').fontSize(10).fillColor('#333')
+        .text(`Order Today • Get Tomorrow (${fmtShort(tomorrow)})`, { align: 'center' });
+      doc.moveDown(0.2);
+
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#cc0000')
+        .text('Cutoff: 8:00 PM for next-day delivery', { align: 'center' });
+      doc.moveDown(0.8);
+
+      doc.font('Helvetica').fontSize(9).fillColor('#555')
+        .text(`Date: ${fmtLong(now)}`, { align: 'center' });
+      doc.moveDown(0.2);
+
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#000')
+        .text(`Total Orders: ${orders.length}`, { align: 'center' });
+      doc.moveDown(1);
+
+      // ===== Table header =====
+      const colX = {
+        sn: leftMargin,
+        order: leftMargin + 30,
+        customer: leftMargin + 130,
+        phone: leftMargin + 240,
+        product: leftMargin + 350
+      };
+      const tableTop = doc.y;
+
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#000');
+      doc.text('#', colX.sn, tableTop);
+      doc.text('Order ID', colX.order, tableTop);
+      doc.text('Customer', colX.customer, tableTop);
+      doc.text('Phone', colX.phone, tableTop);
+      doc.text('Product', colX.product, tableTop);
+
+      doc.moveTo(leftMargin, tableTop + 14)
+         .lineTo(pageWidth - rightMargin, tableTop + 14)
+         .strokeColor('#999').stroke();
+
+      let y = tableTop + 22;
+
+      // ===== Rows =====
+      for (let i = 0; i < orders.length; i++) {
+        const o = orders[i];
+
+        const customerName =
+          o.name ||
+          o.shippingAddress?.name ||
+          o.user?.name ||
+          'Customer';
+
+        const phone = o.shippingAddress?.phone || '';
+
+        // Product names joined by comma
+        const productNames = (o.products || [])
+          .map(p => {
+            const qty = p.quantity ? `${p.quantity}x ` : '';
+            const variant = p.variantName ? ` (${p.variantName})` : '';
+            return `${qty}${p.name || 'Item'}${variant}`;
+          })
+          .join(', ');
+
+        // Page break check
+        const bottomLimit = doc.page.height - doc.page.margins.bottom - 40;
+        if (y > bottomLimit) {
+          doc.addPage();
+          y = doc.page.margins.top;
+        }
+
+        doc.font('Helvetica').fontSize(8).fillColor('#000');
+
+        doc.text(String(i + 1), colX.sn, y, { width: 25 });
+        doc.text(o.orderId || o._id.toString().slice(-8), colX.order, y, { width: 95 });
+        doc.text(customerName, colX.customer, y, { width: 105 });
+        doc.text(phone, colX.phone, y, { width: 105 });
+        doc.text(productNames, colX.product, y, { width: pageWidth - rightMargin - colX.product });
+
+        // Compute row height as the tallest text (product usually wraps)
+        const hOrder = doc.heightOfString(o.orderId || '', { width: 95 });
+        const hCustomer = doc.heightOfString(customerName, { width: 105 });
+        const hPhone = doc.heightOfString(phone, { width: 105 });
+        const hProduct = doc.heightOfString(productNames, { width: pageWidth - rightMargin - colX.product });
+        const rowHeight = Math.max(hOrder, hCustomer, hPhone, hProduct, 12);
+
+        y += rowHeight + 6;
+
+        // Light divider
+        doc.moveTo(leftMargin, y - 3)
+           .lineTo(pageWidth - rightMargin, y - 3)
+           .strokeColor('#eee').stroke();
+      }
+
+      // ===== Footer =====
+      const bottomLimit = doc.page.height - doc.page.margins.bottom - 30;
+      if (y < bottomLimit) {
+        doc.moveDown(2);
+      }
+      doc.fontSize(8).fillColor('#666')
+        .text(`Generated: ${new Date().toLocaleString('en-IN')}`, {
+          align: 'center',
+          width: contentWidth
+        });
+
+      doc.end();
+    });
+
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename="today-orders-${now.toISOString().slice(0,10)}.pdf"`);
+    return reply.status(200).send(pdfBuffer);
+  } catch (error) {
+    console.error('Download today orders PDF error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
 export const getDeliveryBoyOrders = async (request, reply) => {
   try {
     const { id } = request.params;

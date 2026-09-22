@@ -8,7 +8,12 @@ import {
   getUnassignedOrders,
   assignOrderToDeliveryBoy,
   getDeliveryBoyStats,
-  getDeliveryBoyOrders
+  getDeliveryBoyOrders,
+    editOrderAddress, 
+  downloadTodayOrdersPDF,        // ✅ ADD THIS LINE
+
+              // ✅ ADD THIS LINE
+
 } from '../controllers/adminDeliveryController.js';
 import { requireAdmin } from '../controllers/authController.js';
 
@@ -25,12 +30,13 @@ async function adminDeliveryRoutes(fastify, options) {
   
   // Wards List (for dropdown)
   fastify.get('/admin/wards', { preHandler: requireAdmin }, getWardsList);
-  
+  // ✅ Today's Orders PDF (admin)
+fastify.get('/admin/orders/today/pdf', { preHandler: requireAdmin }, downloadTodayOrdersPDF);
   // Delivery Stats
   fastify.get('/admin/delivery/stats', { preHandler: requireAdmin }, getDeliveryBoyStats);
   fastify.get('/admin/delivery-boys/:id/stats', { preHandler: requireAdmin }, getDeliveryBoyStats);  // ✅ ADD THIS LINE
   fastify.get('/admin/delivery-boys/:id/orders', { preHandler: requireAdmin }, getDeliveryBoyOrders);
-  
+  fastify.put('/admin/orders/:id/address', { preHandler: requireAdmin }, editOrderAddress);
   // Order Assignment
   fastify.get('/admin/orders/unassigned', { preHandler: requireAdmin }, getUnassignedOrders);
   fastify.post('/admin/orders/assign', { preHandler: requireAdmin }, assignOrderToDeliveryBoy);
