@@ -6,37 +6,57 @@ import User from '../models/User.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { 
-  sendOrderConfirmationEmail, 
-  sendOrderStatusUpdateEmail, 
-  sendOrderCancellationEmail ,
-  sendOrderRefundEmail ,
-   
-
+import {
+  sendOrderConfirmationEmail,
+  sendOrderStatusUpdateEmail,
+  sendOrderCancellationEmail,
+  sendOrderRefundEmail,
 } from '../services/emailService.js';
-import { 
-  sendOrderConfirmationSMS, 
-  sendOrderStatusSMS, 
-  sendOrderCancellationSMS ,
-    sendOrderRefundSMS      
-
+import {
+  sendOrderConfirmationSMS,
+  sendOrderStatusSMS,
+  sendOrderCancellationSMS,
+  sendOrderRefundSMS
 } from '../services/smsService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load ward data
-let wardsData = null;
-let streetToWardMap = new Map();
+// ============================================================
+// ✅ NORMALIZER: convert any ward shape to internal shape
+// ============================================================
+const normalizeWard = (ward) => {
+  const wardId = ward.wardId !== undefined ? ward.wardId : ward.ward_no;
+  const wardName = ward.wardName !== undefined ? ward.wardName : ward.name;
+  const streets = ward.streets !== undefined ? ward.streets : (ward.key_streets || []);
 
-try {
-  const wardFilePath = path.join(__dirname, '../data/Karaikudi_Wards.json');
-  if (fs.existsSync(wardFilePath)) {
-    wardsData = JSON.parse(fs.readFileSync(wardFilePath, 'utf8'));
-    console.log(`✅ Loaded ${wardsData.wards.length} wards from Karaikudi_Wards.json`);
-    
-    for (const ward of wardsData.wards) {
-      for (const street of ward.streets) {
+  let polygon = ward.polygon || [];
+  if (polygon.length > 0 && typeof polygon[0] === 'object' && polygon[0].lat !== undefined) {
+    polygon = polygon.map(p => [p.lat, p.lon]);
+  }
+
+  return { wardId, wardName, streets, polygon };
+};
+
+// ============================================================
+// ✅ LOAD all city ward files into a Map
+// ============================================================
+const citiesWards = new Map(); // cityKey → { city, wards, streetToWardMap }
+
+const loadCityWards = (cityKey, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      console.warn(`⚠️ Ward file not found for ${cityKey}: ${filePath}`);
+      return;
+    }
+
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const rawWards = raw.wards || [];
+    const wards = rawWards.map(normalizeWard);
+
+    const streetToWardMap = new Map();
+    for (const ward of wards) {
+      for (const street of (ward.streets || [])) {
         const normalizedStreet = street.toLowerCase().trim();
         if (!streetToWardMap.has(normalizedStreet)) {
           streetToWardMap.set(normalizedStreet, {
@@ -47,53 +67,32 @@ try {
         }
       }
     }
-    console.log(`✅ Built street mapping with ${streetToWardMap.size} unique streets`);
-  } else {
-    console.warn('⚠️ Karaikudi_Wards.json not found, ward validation disabled');
-  }
-} catch (error) {
-  console.error('❌ Error loading ward data:', error.message);
-}
 
-// Helper: Get dynamic store settings
-let cachedSettings = null;
-let settingsCacheTime = null;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-
-const getStoreSettings = async () => {
-  const now = Date.now();
-  if (cachedSettings && settingsCacheTime && (now - settingsCacheTime) < CACHE_DURATION) {
-    return cachedSettings;
-  }
-  
-  try {
-    const settings = await Setting.getSettings();
-    cachedSettings = {
-      siteName: settings.siteName,
-      contactEmail: settings.contactEmail || 'contact@example.com',
-      contactNumber: settings.contactNumber || '+91 98765 43210',
-      companyAddress: settings.companyAddress || 'Ganga Enterprise, 2nd Floor, Spencer Plaza, Anna Salai, Chennai',
-      socialMedia: settings.socialMedia || {},
-      razorpayKeyId: settings.razorpayKeyId || '',
-      razorpayKeySecret: settings.razorpayKeySecret || ''
-    };
-    settingsCacheTime = now;
-    return cachedSettings;
+    citiesWards.set(cityKey, { city: cityKey, wards, streetToWardMap });
+    console.log(`✅ Loaded ${wards.length} wards for "${cityKey}" (${streetToWardMap.size} streets)`);
   } catch (error) {
-    console.error('Error fetching settings for receipt:', error);
-    return {
-      siteName: '',
-      contactEmail: 'contact@example.com',
-      contactNumber: '+91 98765 43210',
-      companyAddress: 'Ganga Enterprise, 2nd Floor, Spencer Plaza, Anna Salai, Chennai',
-      socialMedia: {},
-      razorpayKeyId: '',
-      razorpayKeySecret: ''
-    };
+    console.error(`❌ Error loading wards for ${cityKey}:`, error.message);
   }
 };
 
-// Helper: Extract core street name
+loadCityWards('karaikudi', path.join(__dirname, '../data/Karaikudi_Wards.json'));
+loadCityWards('pudukkottai', path.join(__dirname, '../data/Pudukkottai_Wards.json'));
+
+// ============================================================
+// Pick city ward list based on shippingAddress.city
+// ============================================================
+const getCityContext = (city) => {
+  if (!city) return null;
+  const c = city.trim().toLowerCase();
+  for (const [key, ctx] of citiesWards.entries()) {
+    if (c.includes(key)) return ctx;
+  }
+  return null;
+};
+
+// ============================================================
+// Helpers
+// ============================================================
 const extractCoreStreetName = (street) => {
   let cleaned = street.toLowerCase().trim();
   cleaned = cleaned.replace(/^\d+\s+/, '');
@@ -103,7 +102,6 @@ const extractCoreStreetName = (street) => {
   return cleaned.trim();
 };
 
-// Helper: Check if coordinates are within a polygon
 const isPointInPolygon = (lat, lon, polygon) => {
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -118,42 +116,35 @@ const isPointInPolygon = (lat, lon, polygon) => {
   return inside;
 };
 
-// Helper: Find ward by coordinates
-const findWardByCoordinates = (lat, lon) => {
-  if (!wardsData || !wardsData.wards) return null;
-  for (const ward of wardsData.wards) {
-    if (ward.polygon && isPointInPolygon(lat, lon, ward.polygon)) {
-      return {
-        wardId: ward.wardId,
-        wardName: ward.wardName,
-        deliveryZone: 'standard'
-      };
+const findWardByCoordinates = (lat, lon, cityContext) => {
+  if (!cityContext) return null;
+  for (const ward of cityContext.wards) {
+    if (ward.polygon && ward.polygon.length > 2 && isPointInPolygon(lat, lon, ward.polygon)) {
+      return { wardId: ward.wardId, wardName: ward.wardName, deliveryZone: 'standard' };
     }
   }
   return null;
 };
 
-// Helper: EXACT street name match
-const findWardByExactStreetMatch = (streetName) => {
-  if (!streetToWardMap.size) return null;
+const findWardByExactStreetMatch = (streetName, cityContext) => {
+  if (!cityContext) return null;
   const normalizedInput = streetName.toLowerCase().trim();
-  if (streetToWardMap.has(normalizedInput)) {
-    const ward = streetToWardMap.get(normalizedInput);
+  if (cityContext.streetToWardMap.has(normalizedInput)) {
+    const ward = cityContext.streetToWardMap.get(normalizedInput);
     console.log(`✅ EXACT match: "${streetName}" → Ward ${ward.wardId}: ${ward.wardName}`);
     return ward;
   }
   return null;
 };
 
-// Helper: CORE street name match
-const findWardByCoreStreetName = (streetName) => {
-  if (!wardsData || !wardsData.wards) return null;
+const findWardByCoreStreetName = (streetName, cityContext) => {
+  if (!cityContext) return null;
   const coreName = extractCoreStreetName(streetName);
   console.log(`🔍 Extracted core: "${coreName}" from "${streetName}"`);
   if (coreName.length < 3) return null;
-  
-  for (const ward of wardsData.wards) {
-    for (const street of ward.streets) {
+
+  for (const ward of cityContext.wards) {
+    for (const street of (ward.streets || [])) {
       const streetCore = extractCoreStreetName(street);
       if (coreName === streetCore) {
         console.log(`✅ Core match: "${coreName}" == "${streetCore}" → Ward ${ward.wardId}`);
@@ -172,28 +163,58 @@ const findWardByCoreStreetName = (streetName) => {
   return null;
 };
 
-// Helper: Keyword priority match
-const findWardByKeyword = (address) => {
-  if (!wardsData || !wardsData.wards) return null;
+const findWardByKeyword = (address, cityContext) => {
+  if (!cityContext) return null;
   const streetLower = address.street.toLowerCase();
-  
-  const keywordToWard = {
-    'kalanivasal': 1, 'alagappan': 2, 'arumuga': 3, 'subramaniyapuram': 4,
-    'teppakullam': 4, 'nadesan': 6, 'paventhar': 7, 'meenashi': 8,
-    'meenatchi': 8, 'gandipuram': 11, 'muthupattinam': 12, 'kamban': 14,
-    'bharathi nagar': 17, 'vallalar': 17, 'railway': 17, 'soodamanipuram': 18,
-    'kurichipuravu': 19, 'church': 20, 'muthuoorani': 22, 'kallukati': 23,
-    'sivan sanathi': 24, 'kurichi konmoi': 25, 'indira nagar': 26,
-    'karunanithi nagar': 27, 'shiva nagar': 28, 'vaniyangali': 28,
-    'nallaiyan': 29, 'sathiya nagar': 30, 'killaoorani': 31, 'chokkalingam': 32,
-    'pananthoppu': 33, 'pappa oorani': 34, 'vaithiyalingapuram': 35, 'veeraiyan kanmoi': 36
-  };
-  
-  for (const [keyword, targetWardId] of Object.entries(keywordToWard)) {
-    if (streetLower.includes(keyword)) {
-      const ward = wardsData.wards.find(w => w.wardId === targetWardId);
-      if (ward) {
-        console.log(`✅ KEYWORD match: "${keyword}" → Ward ${targetWardId}: ${ward.wardName}`);
+
+  if (cityContext.city === 'karaikudi') {
+    const keywordToWard = {
+      'kalanivasal': 1, 'alagappan': 2, 'arumuga': 3, 'subramaniyapuram': 4,
+      'teppakullam': 4, 'nadesan': 6, 'paventhar': 7, 'meenashi': 8,
+      'meenatchi': 8, 'gandipuram': 11, 'muthupattinam': 12, 'kamban': 14,
+      'bharathi nagar': 17, 'vallalar': 17, 'railway': 17, 'soodamanipuram': 18,
+      'kurichipuravu': 19, 'church': 20, 'muthuoorani': 22, 'kallukati': 23,
+      'sivan sanathi': 24, 'kurichi konmoi': 25, 'indira nagar': 26,
+      'karunanithi nagar': 27, 'shiva nagar': 28, 'vaniyangali': 28,
+      'nallaiyan': 29, 'sathiya nagar': 30, 'killaoorani': 31, 'chokkalingam': 32,
+      'pananthoppu': 33, 'pappa oorani': 34, 'vaithiyalingapuram': 35, 'veeraiyan kanmoi': 36
+    };
+    for (const [keyword, targetWardId] of Object.entries(keywordToWard)) {
+      if (streetLower.includes(keyword)) {
+        const ward = cityContext.wards.find(w => w.wardId === targetWardId);
+        if (ward) {
+          console.log(`✅ KEYWORD match: "${keyword}" → Ward ${targetWardId}`);
+          return { wardId: ward.wardId, wardName: ward.wardName, deliveryZone: 'standard' };
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+const findWardByTypedArea = (typedArea, cityContext) => {
+  if (!cityContext || !typedArea) return null;
+  const normalized = typedArea.trim().toLowerCase();
+  if (normalized.length < 3) return null;
+
+  for (const ward of cityContext.wards) {
+    if ((ward.wardName || '').toLowerCase().trim() === normalized) {
+      console.log(`✅ typedArea EXACT: "${typedArea}" → Ward ${ward.wardId}`);
+      return { wardId: ward.wardId, wardName: ward.wardName, deliveryZone: 'standard' };
+    }
+  }
+  for (const ward of cityContext.wards) {
+    const wardNameLower = (ward.wardName || '').toLowerCase().trim();
+    if (wardNameLower && (wardNameLower.includes(normalized) || normalized.includes(wardNameLower))) {
+      console.log(`✅ typedArea PARTIAL: "${typedArea}" ↔ "${ward.wardName}"`);
+      return { wardId: ward.wardId, wardName: ward.wardName, deliveryZone: 'standard' };
+    }
+  }
+  for (const ward of cityContext.wards) {
+    for (const street of (ward.streets || [])) {
+      if (street.toLowerCase().trim() === normalized) {
+        console.log(`✅ typedArea STREET: "${typedArea}" → Ward ${ward.wardId}`);
         return { wardId: ward.wardId, wardName: ward.wardName, deliveryZone: 'standard' };
       }
     }
@@ -201,17 +222,16 @@ const findWardByKeyword = (address) => {
   return null;
 };
 
-// Helper: Geocode address
 const geocodeAddress = async (address) => {
   const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
   if (!GOOGLE_MAPS_API_KEY) return null;
-  
+
   try {
     const addressString = `${address.street}, ${address.city}, ${address.state}, ${address.postalCode}`;
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressString)}&key=${GOOGLE_MAPS_API_KEY}`;
     const response = await fetch(url);
     const data = await response.json();
-    
+
     if (data.status === 'OK' && data.results && data.results.length > 0) {
       const location = data.results[0].geometry.location;
       console.log(`📍 Geocoded: (${location.lat}, ${location.lng})`);
@@ -224,74 +244,103 @@ const geocodeAddress = async (address) => {
   }
 };
 
-// Helper: Update product stock
-const updateProductStock = async (products) => {
-  console.log(`\n📦 Starting stock update for ${products.length} items...`);
-  
-  for (const item of products) {
-    console.log(`\n--- Processing: ${item.name} ---`);
-    console.log(`  Quantity: ${item.quantity}`);
-    console.log(`  variantId: ${item.variantId || 'NOT PROVIDED'}`);
-    console.log(`  variantName: ${item.variantName || 'NOT PROVIDED'}`);
-    
-    if (!item.variantId && !item.variantName) {
-      console.log(`❌ SKIPPED: No variant specified for "${item.name}". Stock NOT reduced.`);
-      continue;
-    }
-    
-    const product = await Product.findById(item.product);
-    if (!product) {
-      console.log(`❌ Product not found: ${item.product}`);
-      continue;
-    }
-    
-    console.log(`✅ Product found: ${product.name}`);
-    
-    if (!product.variants || product.variants.length === 0) {
-      console.log(`⚠️ Product has no variants, but variant was specified. Stock NOT reduced.`);
-      continue;
-    }
-    
-    let variantFound = false;
-    let variantIndex = -1;
-    
-    if (item.variantId && item.variantId !== '' && item.variantId !== 'null') {
-      variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
-      if (variantIndex !== -1) {
-        console.log(`✅ Found variant by ID: ${product.variants[variantIndex].variantName}`);
-        variantFound = true;
-      }
-    }
-    
-    if (!variantFound && item.variantName && item.variantName !== '') {
-      variantIndex = product.variants.findIndex(v => v.variantName === item.variantName);
-      if (variantIndex !== -1) {
-        console.log(`✅ Found variant by name: ${product.variants[variantIndex].variantName}`);
-        variantFound = true;
-      }
-    }
-    
-    if (!variantFound) {
-      console.log(`❌ SKIPPED: Variant not found for "${item.name}". Stock NOT reduced.`);
-      continue;
-    }
-    
-    const oldVariantStock = product.variants[variantIndex].stock;
-    product.variants[variantIndex].stock -= item.quantity;
-    const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-    product.stock = totalStock;
-    await product.save();
-    
-    console.log(`✅ Stock reduced!`);
-    console.log(`   Variant: ${product.variants[variantIndex].variantName}`);
-    console.log(`   Old stock: ${oldVariantStock} → New stock: ${product.variants[variantIndex].stock}`);
-    console.log(`   Total product stock: ${totalStock}`);
+const matchWard = async (shippingAddress, typedArea) => {
+  const cityContext = getCityContext(shippingAddress.city);
+  if (!cityContext) {
+    console.log(`🌍 Unsupported city "${shippingAddress.city}"`);
+    return { wardId: null, wardName: null, deliveryZone: 'standard' };
   }
-  
-  console.log(`\n📦 Stock update completed\n`);
+
+  console.log(`🏙️ City detected: ${cityContext.city}`);
+
+  let wardInfo = findWardByExactStreetMatch(shippingAddress.street, cityContext);
+  if (wardInfo) return wardInfo;
+
+  wardInfo = findWardByCoreStreetName(shippingAddress.street, cityContext);
+  if (wardInfo) return wardInfo;
+
+  wardInfo = findWardByKeyword(shippingAddress, cityContext);
+  if (wardInfo) return wardInfo;
+
+  wardInfo = findWardByTypedArea(typedArea, cityContext);
+  if (wardInfo) return wardInfo;
+
+  const coords = await geocodeAddress(shippingAddress);
+  if (coords) {
+    wardInfo = findWardByCoordinates(coords.lat, coords.lng, cityContext);
+    if (wardInfo) return wardInfo;
+  }
+
+  console.log(`⚠️ No ward match in ${cityContext.city}`);
+  return { wardId: null, wardName: null, deliveryZone: 'standard' };
 };
 
-// Helper: Restore product stock
+// ============================================================
+// Store settings cache
+// ============================================================
+let cachedSettings = null;
+let settingsCacheTime = null;
+const CACHE_DURATION = 5 * 60 * 1000;
+
+const getStoreSettings = async () => {
+  const now = Date.now();
+  if (cachedSettings && settingsCacheTime && (now - settingsCacheTime) < CACHE_DURATION) {
+    return cachedSettings;
+  }
+
+  try {
+    const settings = await Setting.getSettings();
+    cachedSettings = {
+      siteName: settings.siteName,
+      contactEmail: settings.contactEmail || 'contact@example.com',
+      contactNumber: settings.contactNumber || '+91 98765 43210',
+      companyAddress: settings.companyAddress || 'Ganga Enterprise, 2nd Floor, Spencer Plaza, Anna Salai, Chennai',
+      socialMedia: settings.socialMedia || {},
+      razorpayKeyId: settings.razorpayKeyId || '',
+      razorpayKeySecret: settings.razorpayKeySecret || ''
+    };
+    settingsCacheTime = now;
+    return cachedSettings;
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    return {
+      siteName: '', contactEmail: 'contact@example.com', contactNumber: '+91 98765 43210',
+      companyAddress: 'Ganga Enterprise, 2nd Floor, Spencer Plaza, Anna Salai, Chennai',
+      socialMedia: {}, razorpayKeyId: '', razorpayKeySecret: ''
+    };
+  }
+};
+
+// ============================================================
+// Stock helpers
+// ============================================================
+const updateProductStock = async (products) => {
+  console.log(`\n📦 Stock update for ${products.length} items...`);
+  for (const item of products) {
+    if (!item.variantId && !item.variantName) {
+      console.log(`❌ SKIPPED: No variant for "${item.name}"`);
+      continue;
+    }
+
+    const product = await Product.findById(item.product);
+    if (!product || !product.variants || product.variants.length === 0) continue;
+
+    let variantIndex = -1;
+    if (item.variantId && item.variantId !== 'null') {
+      variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
+    }
+    if (variantIndex === -1 && item.variantName) {
+      variantIndex = product.variants.findIndex(v => v.variantName === item.variantName);
+    }
+    if (variantIndex === -1) continue;
+
+    product.variants[variantIndex].stock -= item.quantity;
+    product.stock = product.variants.reduce((s, v) => s + (v.stock || 0), 0);
+    await product.save();
+    console.log(`✅ Stock reduced: ${item.name} → ${product.variants[variantIndex].stock}`);
+  }
+};
+
 const restoreProductStock = async (products) => {
   for (const item of products) {
     if (item.variantId) {
@@ -300,8 +349,7 @@ const restoreProductStock = async (products) => {
         const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
         if (variantIndex !== -1) {
           product.variants[variantIndex].stock += item.quantity;
-          const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-          product.stock = totalStock;
+          product.stock = product.variants.reduce((s, v) => s + (v.stock || 0), 0);
           await product.save();
         }
       }
@@ -313,264 +361,142 @@ const restoreProductStock = async (products) => {
 export const createOrder = async (request, reply) => {
   try {
     const userId = request.user?.userId || request.user?.id || null;
-    const { 
-      shippingAddress, 
-      paymentMethod, 
-      paymentId, 
-      skipCartClear, 
+    const {
+      shippingAddress,
+      paymentMethod,
+      paymentId,
+      skipCartClear,
       products: bodyProducts,
-      typedArea   // ✅ NEW
+      typedArea
     } = request.body;
-    
+
     if (!shippingAddress || !paymentMethod) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Shipping address and payment method are required'
-      });
+      return reply.status(400).send({ success: false, message: 'Shipping address and payment method are required' });
     }
-    
-    // ✅ Email is now optional
+
     const requiredFields = ['street', 'city', 'state', 'postalCode', 'country', 'phone'];
     for (const field of requiredFields) {
       if (!shippingAddress[field]) {
-        return reply.status(400).send({
-          success: false,
-          message: `Shipping address field '${field}' is required`
-        });
+        return reply.status(400).send({ success: false, message: `Shipping address field '${field}' is required` });
       }
     }
-    
+
     let totalAmount = 0;
     let products = [];
-    
-    // Buy Now mode
+
     if (skipCartClear && bodyProducts && bodyProducts.length > 0) {
-      console.log(`🛒 Buy Now mode - Using ${bodyProducts.length} products from request body`);
-      
+      console.log(`🛒 Buy Now mode - ${bodyProducts.length} products`);
+
       for (const item of bodyProducts) {
         const product = await Product.findById(item.product);
-        
         if (!product) {
-          return reply.status(404).send({
-            success: false,
-            message: `Product not found: ${item.product}`
-          });
+          return reply.status(404).send({ success: false, message: `Product not found: ${item.product}` });
         }
-        
+
         const price = item.price;
         const variantId = item.variantId;
         const variantName = item.variantName || '';
-        
         let variant = null;
         let originalPrice = price;
-        
+
         if (variantId && product.variants && product.variants.length > 0) {
           variant = product.variants.find(v => v._id.toString() === variantId);
-          if (variant) {
-            originalPrice = variant.originalPrice || variant.price || price;
-          }
+          if (variant) originalPrice = variant.originalPrice || variant.price || price;
         }
-        
-        if (variant) {
-          if (variant.stock < item.quantity) {
-            return reply.status(400).send({
-              success: false,
-              message: `Insufficient stock for ${product.name} - ${variantName}`
-            });
-          }
-        } else if (product.stock < item.quantity) {
-          return reply.status(400).send({
-            success: false,
-            message: `Insufficient stock for ${product.name}`
-          });
+
+        if (variant && variant.stock < item.quantity) {
+          return reply.status(400).send({ success: false, message: `Insufficient stock for ${product.name} - ${variantName}` });
+        } else if (!variant && product.stock < item.quantity) {
+          return reply.status(400).send({ success: false, message: `Insufficient stock for ${product.name}` });
         }
-        
+
         const itemTotal = item.quantity * price;
         totalAmount += itemTotal;
-        
+
         let discountPercentage = 0;
-        if (originalPrice > price) {
-          discountPercentage = Math.round(((originalPrice - price) / originalPrice) * 100);
-        }
-        
-        const productImage = product.images && product.images.length > 0 
-          ? product.images[0].image 
-          : product.ogImage || null;
-        
+        if (originalPrice > price) discountPercentage = Math.round(((originalPrice - price) / originalPrice) * 100);
+
+        const productImage = product.images && product.images.length > 0 ? product.images[0].image : product.ogImage || null;
+
         products.push({
-          product: product._id,
-          variantId: variantId,
-          variantName: variantName,
-          quantity: item.quantity,
-          price: price,
-          originalPrice: originalPrice,
-          discountPercentage: discountPercentage,
-          name: product.name,
-          image: productImage,
-          weight: item.weight || 0,
-          weightUnit: item.weightUnit || 'gram'
+          product: product._id, variantId, variantName,
+          quantity: item.quantity, price, originalPrice, discountPercentage,
+          name: product.name, image: productImage,
+          weight: item.weight || 0, weightUnit: item.weightUnit || 'gram'
         });
-        
-        console.log(`  ✅ Buy Now product added: ${product.name} x ${item.quantity} = ${itemTotal}`);
       }
     } else {
-      // Normal checkout
-      console.log(`🛒 Normal checkout - Using cart from database`);
-      
+      console.log(`🛒 Normal checkout`);
+
       const cart = await Cart.findOne({ user: userId }).populate('items.product');
-      
       if (!cart || cart.items.length === 0) {
-        return reply.status(400).send({
-          success: false,
-          message: 'Cart is empty'
-        });
-      }
-      
-      console.log(`📦 Cart has ${cart.items.length} items`);
-      console.log(`📍 Shipping address: "${shippingAddress.street}, ${shippingAddress.city}"`);
-      
-      // Ward matching (informational only)
-      let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
-
-      const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
-      if (exactMatch) wardInfo = exactMatch;
-
-      if (!wardInfo.wardId) {
-        const coreMatch = findWardByCoreStreetName(shippingAddress.street);
-        if (coreMatch) wardInfo = coreMatch;
+        return reply.status(400).send({ success: false, message: 'Cart is empty' });
       }
 
-      if (!wardInfo.wardId) {
-        const keywordMatch = findWardByKeyword(shippingAddress);
-        if (keywordMatch) wardInfo = keywordMatch;
-      }
-
-      if (!wardInfo.wardId) {
-        const coordinates = await geocodeAddress(shippingAddress);
-        if (coordinates) {
-          const foundWard = findWardByCoordinates(coordinates.lat, coordinates.lng);
-          if (foundWard) wardInfo = foundWard;
-        }
-      }
-
-      if (wardInfo.wardId) {
-        console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
-      } else {
-        console.log(`🌍 Non-Karaikudi address — proceeding without ward assignment`);
-      }
-      
-      // Process cart items
       for (const item of cart.items) {
         const product = await Product.findById(item.product._id);
-        
         if (!product) {
-          return reply.status(404).send({
-            success: false,
-            message: `Product not found`
-          });
+          return reply.status(404).send({ success: false, message: `Product not found` });
         }
-        
-        console.log(`\n--- Processing cart item: ${product.name} ---`);
-        console.log(`  Cart variantId: ${item.variantId || 'NOT SET'}`);
-        console.log(`  Cart variantName: ${item.variantName || 'NOT SET'}`);
-        
+
         let itemWeight = item.weight || 0;
         let itemWeightUnit = item.weightUnit || 'gram';
-        
+
         if (product.variants && product.variants.length > 0) {
-          const hasVariant = (item.variantId && item.variantId !== '' && item.variantId !== 'null') || 
+          const hasVariant = (item.variantId && item.variantId !== '' && item.variantId !== 'null') ||
                             (item.variantName && item.variantName !== '');
-          
           if (!hasVariant) {
-            console.log(`❌ ERROR: Product "${product.name}" has variants but no variant selected`);
-            return reply.status(400).send({
-              success: false,
-              message: `Please select a variant for ${product.name}`
-            });
+            return reply.status(400).send({ success: false, message: `Please select a variant for ${product.name}` });
           }
-          
+
           let variant = null;
-          if (item.variantId && item.variantId !== '' && item.variantId !== 'null') {
+          if (item.variantId && item.variantId !== 'null') {
             variant = product.variants.find(v => v._id.toString() === item.variantId);
-          } else if (item.variantName && item.variantName !== '') {
+          } else if (item.variantName) {
             variant = product.variants.find(v => v.variantName === item.variantName);
           }
-          
+
           if (!variant) {
-            console.log(`❌ ERROR: Variant not found for product "${product.name}"`);
-            return reply.status(400).send({
-              success: false,
-              message: `Variant not found for ${product.name}`
-            });
+            return reply.status(400).send({ success: false, message: `Variant not found for ${product.name}` });
           }
-          
           if (variant.stock < item.quantity) {
-            console.log(`❌ ERROR: Insufficient stock for ${product.name} - ${variant.variantName}`);
-            return reply.status(400).send({
-              success: false,
-              message: `Insufficient stock for ${product.name} - ${variant.variantName}. Only ${variant.stock} left.`
-            });
+            return reply.status(400).send({ success: false, message: `Insufficient stock for ${product.name} - ${variant.variantName}` });
           }
-          
           if (!itemWeight && variant.weight) {
             itemWeight = variant.weight;
             itemWeightUnit = variant.weightUnit || 'gram';
           }
-          
-          console.log(`✅ Variant found: ${variant.variantName}, Stock: ${variant.stock}, Weight: ${itemWeight} ${itemWeightUnit}`);
-          
         } else {
           if (product.stock < item.quantity) {
-            console.log(`❌ ERROR: Insufficient stock for ${product.name}`);
-            return reply.status(400).send({
-              success: false,
-              message: `Insufficient stock for ${product.name}. Only ${product.stock} left.`
-            });
+            return reply.status(400).send({ success: false, message: `Insufficient stock for ${product.name}` });
           }
-          console.log(`✅ No variants, product stock: ${product.stock}`);
         }
-        
+
         const itemPrice = item.price || product.basePrice;
         const itemTotal = item.quantity * itemPrice;
         totalAmount += itemTotal;
-        
-        const productImage = product.images && product.images.length > 0 
-          ? product.images[0].image 
-          : product.ogImage || null;
-        
+
+        const productImage = product.images && product.images.length > 0 ? product.images[0].image : product.ogImage || null;
+
         let discountPercentage = 0;
         let originalPrice = item.originalPrice || itemPrice;
-        if (originalPrice > itemPrice) {
-          discountPercentage = Math.round(((originalPrice - itemPrice) / originalPrice) * 100);
-        }
-        
+        if (originalPrice > itemPrice) discountPercentage = Math.round(((originalPrice - itemPrice) / originalPrice) * 100);
+
         products.push({
           product: product._id,
           variantId: item.variantId || null,
           variantName: item.variantName || '',
-          quantity: item.quantity,
-          price: itemPrice,
-          originalPrice: originalPrice,
-          discountPercentage: discountPercentage,
-          name: product.name,
-          image: productImage,
-          weight: itemWeight,
-          weightUnit: itemWeightUnit
+          quantity: item.quantity, price: itemPrice, originalPrice, discountPercentage,
+          name: product.name, image: productImage,
+          weight: itemWeight, weightUnit: itemWeightUnit
         });
-        
-        console.log(`  ✅ Added to order: ${item.quantity} x ${itemPrice} = ${itemTotal} (Weight: ${itemWeight} ${itemWeightUnit})`);
       }
     }
-    
-    // Validate totalAmount
+
     if (isNaN(totalAmount) || totalAmount <= 0) {
-      console.error('❌ Invalid total amount calculated:', totalAmount);
-      return reply.status(400).send({
-        success: false,
-        message: 'Invalid order total calculated'
-      });
+      return reply.status(400).send({ success: false, message: 'Invalid order total calculated' });
     }
-    
+
     const shippingFee = 0;
     const taxAmount = Math.round((totalAmount * 5) / 100);
     const discountAmount = products.reduce((sum, item) => {
@@ -580,50 +506,35 @@ export const createOrder = async (request, reply) => {
       return sum;
     }, 0);
     const finalAmount = totalAmount + shippingFee + taxAmount;
-    
-    console.log(`\n💰 Order totals:`);
-    console.log(`   Subtotal: ${totalAmount}`);
-    console.log(`   Tax (5%): ${taxAmount}`);
-    console.log(`   Final: ${finalAmount}`);
-    
-    // ========== Ward matching (final pass) ==========
-    let wardInfo = { wardId: null, wardName: null, deliveryZone: 'standard' };
-    
-    const exactMatch = findWardByExactStreetMatch(shippingAddress.street);
-    if (exactMatch) wardInfo = exactMatch;
-    else {
-      const coreMatch = findWardByCoreStreetName(shippingAddress.street);
-      if (coreMatch) wardInfo = coreMatch;
-      else {
-        const keywordMatch = findWardByKeyword(shippingAddress);
-        if (keywordMatch) wardInfo = keywordMatch;
-        else {
-          const coordinates = await geocodeAddress(shippingAddress);
-          if (coordinates) {
-            const foundWard = findWardByCoordinates(coordinates.lat, coordinates.lng);
-            if (foundWard) wardInfo = foundWard;
-          }
-        }
-      }
-    }
+
+    console.log(`💰 Subtotal: ${totalAmount}, Tax: ${taxAmount}, Final: ${finalAmount}`);
+
+    const wardInfo = await matchWard(shippingAddress, typedArea);
 
     if (wardInfo.wardId) {
       console.log(`✅ Ward assigned: ${wardInfo.wardId} - ${wardInfo.wardName}`);
     } else {
-      console.log(`🌍 Non-Karaikudi address — proceeding without ward assignment`);
+      console.log(`🌍 No ward assigned`);
     }
-    
+
+    // ✅ Save customer name at both top-level and inside shippingAddress
+    const customerName = shippingAddress.name || 'Customer';
+
     const order = await Order.create({
       user: userId,
+      name: customerName,                            // ✅ top-level name
       products,
-      shippingAddress,
+      shippingAddress: {
+        ...shippingAddress,
+        name: shippingAddress.name || ''             // ✅ keep inside shippingAddress too
+      },
       wardId: wardInfo.wardId,
       wardName: wardInfo.wardName,
       deliveryZone: wardInfo.deliveryZone,
-      typedArea: typedArea || '',   // ✅ NEW
+      typedArea: typedArea ? typedArea.trim() : '',
       paymentMethod,
       paymentId: paymentMethod !== 'cod' ? paymentId : undefined,
-      paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
+      paymentStatus: 'pending',
       orderStatus: paymentMethod === 'cod' ? 'confirmed' : 'pending',
       totalAmount: Number(totalAmount.toFixed(2)),
       shippingFee: Number(shippingFee.toFixed(2)),
@@ -631,102 +542,80 @@ export const createOrder = async (request, reply) => {
       discountAmount: Number(discountAmount.toFixed(2)),
       finalAmount: Number(finalAmount.toFixed(2))
     });
-    
-    console.log(`\n✅ Order created: ${order.orderId} (sNo: ${order.sNo})`);
-    
-    // ========== AUTO-ASSIGN BY WARD ==========
+
+    console.log(`✅ Order created: ${order.orderId}`);
+
+    // AUTO-ASSIGN by ward (city-aware)
     if (order.wardId) {
       try {
         const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
-        const deliveryBoy = await DeliveryBoy.findOne({ 
+        const orderCity = (order.shippingAddress?.city || '').trim().toLowerCase();
+
+        const candidates = await DeliveryBoy.find({
           wardIds: { $in: [order.wardId] },
-          status: 'active' 
+          status: 'active'
         });
-        
+
+        const deliveryBoy = candidates.find(boy => {
+          const boyCity = (boy.city || '').trim().toLowerCase();
+          return !boyCity || !orderCity || orderCity.includes(boyCity);
+        });
+
         if (deliveryBoy) {
           order.deliveryBoy = deliveryBoy._id;
           order.deliveryStatus = 'assigned';
           order.deliveryAssignedAt = new Date();
           await order.save();
-          console.log(`✅ Order ${order.orderId} auto-assigned to: ${deliveryBoy.name} (Ward ${order.wardId})`);
-        } else {
-          console.log(`⚠️ No active delivery boy found for Ward ${order.wardId}`);
+          console.log(`✅ Auto-assigned (ward) to ${deliveryBoy.name}`);
         }
-      } catch (err) {
-        console.error('Auto-assign error:', err.message);
-      }
+      } catch (err) { console.error('Auto-assign ward error:', err.message); }
     }
-    
-    // ========== ✅ AUTO-ASSIGN BY CITY (non-Karaikudi orders) ==========
-    if (!order.wardId && order.shippingAddress?.city) {
+
+    // AUTO-ASSIGN by city
+    if (!order.deliveryBoy && order.shippingAddress?.city) {
       try {
         const DeliveryBoy = (await import('../models/DeliveryBoy.js')).default;
         const city = order.shippingAddress.city.trim().toLowerCase();
-
         const candidates = await DeliveryBoy.find({ status: 'active' });
-
         const matchedBoy = candidates.find(boy =>
           (boy.areas || []).some(a => a && a.trim().toLowerCase() === city)
         );
-
         if (matchedBoy) {
           order.deliveryBoy = matchedBoy._id;
           order.deliveryStatus = 'assigned';
           order.deliveryAssignedAt = new Date();
           await order.save();
-          console.log(`✅ Order ${order.orderId} auto-assigned to: ${matchedBoy.name} (City: ${order.shippingAddress.city})`);
-        } else {
-          console.log(`⚠️ No delivery boy covers city "${order.shippingAddress.city}" — leaving unassigned`);
+          console.log(`✅ Auto-assigned (city) to ${matchedBoy.name}`);
         }
-      } catch (err) {
-        console.error('Auto-assign (city) error:', err.message);
-      }
+      } catch (err) { console.error('Auto-assign city error:', err.message); }
     }
-    
-    // Update stock for COD orders
+
     if (paymentMethod === 'cod') {
-      console.log(`\n📦 Updating stock for COD order...`);
       await updateProductStock(products);
       order.orderStatus = 'confirmed';
       await order.save();
     }
-    
-    // Clear cart if not Buy Now
+
     if (!skipCartClear && userId) {
       await Cart.findOneAndUpdate(
-        { user: userId }, 
+        { user: userId },
         { $set: { items: [], totalItems: 0, totalPrice: 0, totalOriginalPrice: 0, totalSavings: 0 } }
       );
-      console.log(`🗑️ Cart cleared for user ${userId} (normal checkout)`);
-    } else {
-      console.log(`🛒 Buy Now mode - Cart NOT cleared`);
+      console.log(`🗑️ Cart cleared`);
     }
-    
-    // Notifications for COD
+
     if (paymentMethod === 'cod') {
       const customerEmail = shippingAddress.email;
-      const customerName = shippingAddress.name || 'Customer';
       const customerPhone = shippingAddress.phone;
-      
+
       if (customerEmail) {
-        try {
-          await sendOrderConfirmationEmail(order, { email: customerEmail, name: customerName });
-          console.log(`📧 Order confirmation email sent to ${customerEmail} (COD)`);
-        } catch (emailError) {
-          console.error('Failed to send order confirmation email:', emailError);
-        }
+        try { await sendOrderConfirmationEmail(order, { email: customerEmail, name: customerName }); } catch (e) { console.error(e); }
       }
-      
-      try {
-        if (customerPhone) {
-          await sendOrderConfirmationSMS(customerPhone, order);
-          console.log(`📱 Order confirmation SMS sent to ${customerPhone} (COD)`);
-        }
-      } catch (smsError) {
-        console.error('Failed to send order confirmation SMS:', smsError);
+      if (customerPhone) {
+        try { await sendOrderConfirmationSMS(customerPhone, order); } catch (e) { console.error(e); }
       }
     }
-    
+
     return reply.status(201).send({
       success: true,
       message: 'Order created successfully',
@@ -734,11 +623,12 @@ export const createOrder = async (request, reply) => {
         _id: order._id,
         orderId: order.orderId,
         sNo: order.sNo,
+        name: order.name,                         // ✅ return name
         products: order.products,
         shippingAddress: order.shippingAddress,
         wardId: order.wardId,
         wardName: order.wardName,
-        typedArea: order.typedArea,   // ✅ NEW
+        typedArea: order.typedArea,
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         orderStatus: order.orderStatus,
@@ -751,64 +641,37 @@ export const createOrder = async (request, reply) => {
       },
       requiresPayment: paymentMethod !== 'cod'
     });
-    
+
   } catch (error) {
     console.error('❌ Create order error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
+    return reply.status(500).send({ success: false, message: error.message || 'Internal server error' });
   }
 };
 
-// ========== UPDATE ORDER PAYMENT SUCCESS (RAZORPAY WEBHOOK) ==========
+// ========== UPDATE ORDER PAYMENT SUCCESS ==========
 export const updateOrderPaymentSuccess = async (request, reply) => {
   try {
     const { orderId, paymentId } = request.body;
-
-    console.log('🔔 Payment success webhook received:', { orderId, paymentId });
-
     if (!orderId || !paymentId) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Order ID and Payment ID are required'
-      });
+      return reply.status(400).send({ success: false, message: 'Order ID and Payment ID are required' });
     }
 
     const order = await Order.findOne({ orderId });
-
-    if (!order) {
-      console.error(`❌ Order not found: ${orderId}`);
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-
-    console.log(`✅ Order found: ${order.orderId}, current paymentStatus: ${order.paymentStatus}`);
-
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
     if (order.paymentStatus === 'completed') {
-      console.log(`ℹ️ Order ${order.orderId} already has payment completed`);
-      return reply.status(200).send({
-        success: true,
-        message: 'Order payment already completed',
-        order
-      });
+      return reply.status(200).send({ success: true, message: 'Already completed', order });
     }
 
     if (order.paymentMethod === 'razorpay') {
-      console.log(`📦 Updating stock for order ${order.orderId}`);
       for (const item of order.products) {
         if (item.variantId) {
           const product = await Product.findById(item.product);
           if (product && product.variants) {
-            const variantIndex = product.variants.findIndex(v => v._id.toString() === item.variantId);
-            if (variantIndex !== -1) {
-              product.variants[variantIndex].stock -= item.quantity;
-              const totalStock = product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
-              product.stock = totalStock;
+            const idx = product.variants.findIndex(v => v._id.toString() === item.variantId);
+            if (idx !== -1) {
+              product.variants[idx].stock -= item.quantity;
+              product.stock = product.variants.reduce((s, v) => s + (v.stock || 0), 0);
               await product.save();
-              console.log(`  ✅ Updated stock for ${item.name} variant: -${item.quantity}`);
             }
           }
         }
@@ -821,721 +684,588 @@ export const updateOrderPaymentSuccess = async (request, reply) => {
     order.paidAt = new Date();
     await order.save();
 
-    console.log(`✅ Order ${order.orderId} updated: paymentStatus=completed, orderStatus=confirmed`);
-
     const customerEmail = order.shippingAddress?.email;
     const customerPhone = order.shippingAddress?.phone;
-    const customerName = order.shippingAddress?.name || order.user?.name || 'Customer';
+    const customerName = order.name || order.shippingAddress?.name || 'Customer';
 
     if (customerEmail) {
-      try {
-        await sendOrderConfirmationEmail(order, { email: customerEmail, name: customerName });
-        console.log(`📧 Order confirmation email sent to ${customerEmail} (Payment completed)`);
-      } catch (emailError) {
-        console.error('❌ Failed to send order confirmation email:', emailError);
-      }
-    } else {
-      console.warn(`⚠️ No email address found for order ${order.orderId} - email not sent`);
+      try { await sendOrderConfirmationEmail(order, { email: customerEmail, name: customerName }); } catch (e) { console.error(e); }
     }
-
     if (customerPhone) {
-      try {
-        await sendOrderConfirmationSMS(customerPhone, order);
-        console.log(`📱 Order confirmation SMS sent to ${customerPhone}`);
-      } catch (smsError) {
-        console.error('❌ Failed to send order confirmation SMS:', smsError);
-      }
+      try { await sendOrderConfirmationSMS(customerPhone, order); } catch (e) { console.error(e); }
     }
 
     return reply.status(200).send({
-      success: true,
-      message: 'Order payment status updated successfully',
+      success: true, message: 'Payment updated',
       order: {
-        _id: order._id,
-        orderId: order.orderId,
-        orderStatus: order.orderStatus,
-        paymentStatus: order.paymentStatus,
-        paymentId: order.paymentId,
-        paidAt: order.paidAt
+        _id: order._id, orderId: order.orderId, name: order.name,
+        orderStatus: order.orderStatus, paymentStatus: order.paymentStatus
       }
     });
-
   } catch (error) {
-    console.error('❌ Update order payment success error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
 // ========== OTHER FUNCTIONS ==========
-
-// Get user's orders
 export const getUserOrders = async (request, reply) => {
   try {
     const userId = request.user.userId || request.user.id;
     const orders = await Order.find({ user: userId }).sort({ createdAt: -1 });
     return reply.status(200).send({ success: true, orders });
   } catch (error) {
-    console.error('Get user orders error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// Get single order by ID
 export const getOrderById = async (request, reply) => {
   try {
     const { id } = request.params;
     const userId = request.user.userId || request.user.id;
     const isAdmin = request.user.role === 'admin';
-    
     const order = await Order.findById(id);
-    
-    if (!order) {
-      return reply.status(404).send({ success: false, message: 'Order not found' });
-    }
-    
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
     if (order.user.toString() !== userId && !isAdmin) {
-      return reply.status(403).send({ success: false, message: 'Unauthorized to view this order' });
+      return reply.status(403).send({ success: false, message: 'Unauthorized' });
     }
-    
     return reply.status(200).send({ success: true, order });
   } catch (error) {
-    console.error('Get order by ID error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// ADMIN: Get all orders
 export const getAllOrders = async (request, reply) => {
   try {
-    if (request.user.role !== 'admin') {
-      return reply.status(403).send({
-        success: false,
-        message: 'Access denied. Admin only.'
-      });
-    }
-
+    if (request.user.role !== 'admin') return reply.status(403).send({ success: false, message: 'Admin only' });
     const { status, paymentStatus, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = request.query;
-    
     const filter = {};
     if (status) filter.orderStatus = status;
     if (paymentStatus) filter.paymentStatus = paymentStatus;
-    
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
-    
-    const orders = await Order.find(filter)
-      .populate('user', 'name phone')
-      .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit));
-    
+    const orders = await Order.find(filter).populate('user', 'name phone').sort(sort).skip(skip).limit(parseInt(limit));
     const totalOrders = await Order.countDocuments(filter);
-    
     return reply.status(200).send({
-      success: true,
-      orders,
+      success: true, orders,
       pagination: {
         currentPage: parseInt(page),
         totalPages: Math.ceil(totalOrders / parseInt(limit)),
-        totalOrders,
-        limit: parseInt(limit)
+        totalOrders, limit: parseInt(limit)
       }
     });
   } catch (error) {
-    console.error('Get all orders error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// ADMIN: Get order statistics
 export const getOrderStats = async (request, reply) => {
   try {
-    if (request.user.role !== 'admin') {
-      return reply.status(403).send({
-        success: false,
-        message: 'Access denied. Admin only.'
-      });
-    }
-
+    if (request.user.role !== 'admin') return reply.status(403).send({ success: false, message: 'Admin only' });
     const totalOrders = await Order.countDocuments();
     const totalRevenue = await Order.aggregate([
       { $match: { orderStatus: { $ne: 'cancelled' } } },
       { $group: { _id: null, total: { $sum: '$finalAmount' } } }
     ]);
-    
-    const ordersByStatus = await Order.aggregate([
-      { $group: { _id: '$orderStatus', count: { $sum: 1 } } }
-    ]);
-    
-    const ordersByPaymentStatus = await Order.aggregate([
-      { $group: { _id: '$paymentStatus', count: { $sum: 1 } } }
-    ]);
-    
-    const recentOrders = await Order.find()
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate('user', 'name');
-
+    const ordersByStatus = await Order.aggregate([{ $group: { _id: '$orderStatus', count: { $sum: 1 } } }]);
+    const ordersByPaymentStatus = await Order.aggregate([{ $group: { _id: '$paymentStatus', count: { $sum: 1 } } }]);
+    const recentOrders = await Order.find().sort({ createdAt: -1 }).limit(5).populate('user', 'name');
     return reply.status(200).send({
       success: true,
-      stats: {
-        totalOrders,
-        totalRevenue: totalRevenue[0]?.total || 0,
-        ordersByStatus,
-        ordersByPaymentStatus,
-        recentOrders
-      }
+      stats: { totalOrders, totalRevenue: totalRevenue[0]?.total || 0, ordersByStatus, ordersByPaymentStatus, recentOrders }
     });
   } catch (error) {
-    console.error('Get order stats error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// ADMIN: Update order status
 export const updateOrderStatus = async (request, reply) => {
   try {
-    if (request.user.role !== 'admin') {
-      return reply.status(403).send({
-        success: false,
-        message: 'Access denied. Admin only.'
-      });
-    }
-
+    if (request.user.role !== 'admin') return reply.status(403).send({ success: false, message: 'Admin only' });
     const { id } = request.params;
     const { orderStatus, paymentStatus, cancellationReason } = request.body;
-    
     const order = await Order.findById(id);
-    
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-    
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
     const oldStatus = order.orderStatus;
-    
+
     if (orderStatus) {
-      if (orderStatus === 'delivered' && order.orderStatus !== 'delivered') {
-        order.deliveredAt = new Date();
-      }
-      
+      if (orderStatus === 'delivered' && order.orderStatus !== 'delivered') order.deliveredAt = new Date();
       if (orderStatus === 'cancelled' && order.orderStatus !== 'cancelled') {
         order.cancelledAt = new Date();
         if (cancellationReason) order.cancellationReason = cancellationReason;
         await restoreProductStock(order.products);
-        
         order.deliveryStatus = 'unassigned';
         order.deliveryAssignedAt = null;
         order.deliveryPickedUpAt = null;
         order.deliveryDeliveredAt = null;
       }
-      
       order.orderStatus = orderStatus;
     }
-    
     if (paymentStatus) {
-      if (paymentStatus === 'completed' && order.paymentStatus !== 'completed') {
-        order.paidAt = new Date();
-      }
+      if (paymentStatus === 'completed' && order.paymentStatus !== 'completed') order.paidAt = new Date();
       order.paymentStatus = paymentStatus;
     }
-    
+
     await order.save();
-    
-    console.log(`✅ Admin updated order ${order.orderId}: status=${order.orderStatus}, payment=${order.paymentStatus}`);
-    
+
     if (orderStatus && oldStatus !== orderStatus) {
       const customerEmail = order.shippingAddress?.email;
-      const customerName = order.shippingAddress?.name || 'Customer';
+      const customerName = order.name || order.shippingAddress?.name || 'Customer';
       const customerPhone = order.shippingAddress?.phone;
-      
+
       if (customerEmail) {
-        try {
-          await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus);
-        } catch (emailError) {
-          console.error('Failed to send status update email:', emailError);
-        }
+        try { await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus); } catch (e) { console.error(e); }
       }
-      
-      try {
-        if (customerPhone) {
-          await sendOrderStatusSMS(customerPhone, order, orderStatus);
-        }
-      } catch (smsError) {
-        console.error('Failed to send status update SMS:', smsError);
+      if (customerPhone) {
+        try { await sendOrderStatusSMS(customerPhone, order, orderStatus); } catch (e) { console.error(e); }
       }
     }
-    
+
     return reply.status(200).send({
-      success: true,
-      message: 'Order updated successfully',
+      success: true, message: 'Order updated',
       order: {
-        _id: order._id,
-        orderId: order.orderId,
+        _id: order._id, orderId: order.orderId, name: order.name,
         orderStatus: order.orderStatus,
-        deliveryStatus: order.deliveryStatus,
-        paymentStatus: order.paymentStatus,
-        deliveredAt: order.deliveredAt,
-        cancelledAt: order.cancelledAt
+        deliveryStatus: order.deliveryStatus, paymentStatus: order.paymentStatus,
+        deliveredAt: order.deliveredAt, cancelledAt: order.cancelledAt
       }
     });
   } catch (error) {
-    console.error('Update order status error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// ADMIN: Get single order
 export const getAdminOrderById = async (request, reply) => {
   try {
-    if (request.user.role !== 'admin') {
-      return reply.status(403).send({
-        success: false,
-        message: 'Access denied. Admin only.'
-      });
-    }
-
+    if (request.user.role !== 'admin') return reply.status(403).send({ success: false, message: 'Admin only' });
     const { id } = request.params;
-    
-    const order = await Order.findById(id)
-      .populate('user', 'name phone')
-      .populate('products.product', 'name basePrice images');
-    
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-    
-    return reply.status(200).send({
-      success: true,
-      order
-    });
+    const order = await Order.findById(id).populate('user', 'name phone').populate('products.product', 'name basePrice images');
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
+    return reply.status(200).send({ success: true, order });
   } catch (error) {
-    console.error('Get admin order error:', error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// Print order receipt (JSON)
 export const printOrderReceipt = async (request, reply) => {
   try {
     const { id } = request.params;
     const userId = request.user.userId || request.user.id;
     const isAdmin = request.user.role === 'admin';
-
-    const order = await Order.findById(id)
-      .populate('user', 'name')
-      .populate('products.product', 'name price image');
-
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-
+    const order = await Order.findById(id).populate('user', 'name').populate('products.product', 'name price image');
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
     const isOrderOwner = order.user && order.user._id.toString() === userId;
-    if (!isOrderOwner && !isAdmin) {
-      return reply.status(403).send({
-        success: false,
-        message: 'Not authorized to view this receipt'
-      });
-    }
+    if (!isOrderOwner && !isAdmin) return reply.status(403).send({ success: false, message: 'Not authorized' });
 
     const storeSettings = await getStoreSettings();
+
+    const customerName =
+      order.name ||
+      order.shippingAddress?.name ||
+      order.user?.name ||
+      'Customer';
 
     const receiptData = {
       receiptNumber: order._id.toString(),
       orderNumber: order.orderId || order._id.toString(),
       date: order.createdAt,
-      store: {
-        name: storeSettings.siteName,
-        email: storeSettings.contactEmail,
-        phone: storeSettings.contactNumber,
-        address: storeSettings.companyAddress
-      },
-      customer: {
-        id: order.user?._id,
-        name: order.user?.name || 'Customer',
-      },
+      store: { name: storeSettings.siteName, email: storeSettings.contactEmail, phone: storeSettings.contactNumber, address: storeSettings.companyAddress },
+      customer: { id: order.user?._id, name: customerName },     // ✅ uses order.name first
       wardName: order.wardName || null,
-      typedArea: order.typedArea || null,   // ✅ NEW
+      typedArea: order.typedArea || null,
       shippingAddress: order.shippingAddress,
       items: order.products.map(item => ({
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
+        name: item.name, quantity: item.quantity, price: item.price,
         total: (item.quantity * item.price).toFixed(2),
         variantName: item.variantName,
-        weight: item.weight || 0,
-        weightUnit: item.weightUnit || 'gram'
+        weight: item.weight || 0, weightUnit: item.weightUnit || 'gram'
       })),
-      pricing: {
-        subtotal: order.totalAmount || 0,
-        tax: order.taxAmount || 0,
-        shipping: order.shippingFee || 0,
-        total: order.finalAmount || 0
-      },
-      payment: {
-        method: order.paymentMethod,
-        status: order.paymentStatus,
-        paidAt: order.paidAt
-      }
+      pricing: { subtotal: order.totalAmount || 0, tax: order.taxAmount || 0, shipping: order.shippingFee || 0, total: order.finalAmount || 0 },
+      payment: { method: order.paymentMethod, status: order.paymentStatus, paidAt: order.paidAt }
     };
-
-    return reply.status(200).send({
-      success: true,
-      message: 'Receipt generated successfully',
-      receipt: receiptData
-    });
-
+    return reply.status(200).send({ success: true, message: 'Receipt generated', receipt: receiptData });
   } catch (error) {
-    console.error('Receipt generation error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: 'Error generating receipt',
-      error: error.message
-    });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// Print order receipt PDF
 export const printOrderReceiptPDF = async (request, reply) => {
   try {
     const { id } = request.params;
     const userId = request.user.userId || request.user.id;
     const isAdmin = request.user.role === 'admin';
-
-    const order = await Order.findById(id)
-      .populate('user', 'name')
-      .populate('products.product', 'name price image');
-
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-
+    const order = await Order.findById(id).populate('user', 'name').populate('products.product', 'name price image');
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
     const isOrderOwner = order.user && order.user._id.toString() === userId;
-    if (!isOrderOwner && !isAdmin) {
-      return reply.status(403).send({
-        success: false,
-        message: 'Not authorized to view this receipt'
-      });
-    }
+    if (!isOrderOwner && !isAdmin) return reply.status(403).send({ success: false, message: 'Not authorized' });
 
     const storeSettings = await getStoreSettings();
+
+    const customerName =
+      order.name ||
+      order.shippingAddress?.name ||
+      order.user?.name ||
+      'Customer';
+
     const receiptData = {
       receiptNumber: order._id.toString(),
       orderNumber: order.orderId || order._id.toString(),
       date: order.createdAt,
-      store: {
-        name: storeSettings.siteName,
-        email: storeSettings.contactEmail,
-        phone: storeSettings.contactNumber,
-        address: storeSettings.companyAddress
-      },
-      customer: {
-        name: order.user?.name || 'Customer',
-      },
+      store: { name: storeSettings.siteName, email: storeSettings.contactEmail, phone: storeSettings.contactNumber, address: storeSettings.companyAddress },
+      customer: { name: customerName },                          // ✅ uses order.name first
       wardName: order.wardName || null,
-      typedArea: order.typedArea || null,   // ✅ NEW
+      typedArea: order.typedArea || null,
       shippingAddress: order.shippingAddress,
       items: order.products.map(item => ({
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
+        name: item.name, quantity: item.quantity, price: item.price,
         total: (item.quantity * item.price).toFixed(2),
         variantName: item.variantName,
-        weight: item.weight || 0,
-        weightUnit: item.weightUnit || 'gram'
+        weight: item.weight || 0, weightUnit: item.weightUnit || 'gram'
       })),
-      pricing: {
-        subtotal: order.totalAmount || 0,
-        tax: order.taxAmount || 0,
-        shipping: order.shippingFee || 0,
-        total: order.finalAmount || 0
-      },
-      payment: {
-        method: order.paymentMethod,
-        status: order.paymentStatus
-      }
+      pricing: { subtotal: order.totalAmount || 0, tax: order.taxAmount || 0, shipping: order.shippingFee || 0, total: order.finalAmount || 0 },
+      payment: { method: order.paymentMethod, status: order.paymentStatus }
     };
 
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="receipt-${order.orderId}.pdf"`);
-    
     const pdfBuffer = await generateReceiptPDFBuffer(receiptData);
     return reply.status(200).send(pdfBuffer);
-
   } catch (error) {
-    console.error('PDF receipt generation error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: 'Error generating PDF receipt',
-      error: error.message
-    });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// Helper function to generate PDF buffer
+// ============================================================
+// PDF helpers
+// ============================================================
 const generateReceiptPDFBuffer = async (receiptData) => {
   return new Promise(async (resolve, reject) => {
     try {
       const PDFDocument = await import('pdfkit').then(m => m.default);
       const doc = new PDFDocument({ margin: 50 });
       const buffers = [];
-
       doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => {
-        const pdfData = Buffer.concat(buffers);
-        resolve(pdfData);
-      });
-
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
       addPDFHeader(doc, receiptData);
       addPDFCustomerInfo(doc, receiptData);
       addPDFItemsTable(doc, receiptData);
       addPDFTotals(doc, receiptData);
       addPDFFooter(doc);
-
       doc.end();
-
     } catch (error) {
       reject(error);
     }
   });
 };
 
-// PDF generation helper functions
 const addPDFHeader = (doc, data) => {
-  doc.fontSize(20)
-     .font('Helvetica-Bold')
-     .fillColor('#1a237e')
-     .text(data.store.name, { align: 'center' })
-     .moveDown(0.5);
-  
-  doc.fontSize(10)
-     .font('Helvetica')
-     .fillColor('#666')
-     .text('Order Receipt', { align: 'center' })
-     .moveDown(1);
+  doc.fontSize(20).font('Helvetica-Bold').fillColor('#1a237e')
+     .text(data.store.name, { align: 'center' }).moveDown(0.5);
+  doc.fontSize(10).font('Helvetica').fillColor('#666')
+     .text('Order Receipt', { align: 'center' }).moveDown(1);
 };
 
 const addPDFCustomerInfo = (doc, data) => {
-  const startX = 50;
+  const pageWidth = doc.page.width;
+  const leftMargin = doc.page.margins.left;
+  const rightMargin = doc.page.margins.right;
+
+  // ============================================================
+  // COLUMN POSITIONS
+  // ============================================================
+
+  const startX = leftMargin;
   const startY = doc.y;
-  
-  doc.fontSize(10)
+
+  // FROM column
+  const fromWidth = 150;
+
+  // ORDER column
+  const orderColumnX = 235;
+  const orderWidth = 145;
+
+  // TO column
+  const toColumnX = 415;
+  const toWidth = pageWidth - rightMargin - toColumnX;
+
+  // ============================================================
+  // FROM
+  // ============================================================
+
+  doc
     .font('Helvetica-Bold')
-    .fillColor('#000')
+    .fontSize(10)
+    .fillColor('#000000')
     .text('FROM:', startX, startY);
 
-  doc.moveDown(0.5);
-  doc.font('Helvetica').fontSize(9);
-  doc.text(data.store.name, startX);
-  
-  const addressLines = data.store.address.split(',').map(line => line.trim());
-  for (const line of addressLines) {
-    doc.text(line, startX);
-  }
-  doc.text(`Phone: ${data.store.phone}`, startX);
-  doc.text(`Email: ${data.store.email}`, startX);
+  let fromY = startY + 18;
 
-  let fromBottomY = doc.y;
-  
-  const orderColumnX = startX + 200;
-  
-  doc.fontSize(12)
-    .font('Helvetica-Bold')
-    .fillColor('#000')
-    .text('ORDER RECEIPT', orderColumnX, startY);
-  
-  let orderY = doc.y + 10;
-  doc.fontSize(9)
+  doc
     .font('Helvetica')
-    .fillColor('#333')
-    .text(`Order #: ${data.orderNumber}`, orderColumnX, orderY);
-  
-  orderY += 15;
-  doc.text(`Date: ${new Date(data.date).toLocaleDateString()}`, orderColumnX, orderY);
-  orderY += 15;
-  doc.text(`Payment: ${data.payment.method}`, orderColumnX, orderY);
-  orderY += 15;
-  doc.text(`Status: ${data.payment.status}`, orderColumnX, orderY);
-  
-  const toColumnX = startX + 390;
-  
-  doc.fontSize(10)
-    .font('Helvetica-Bold')
-    .fillColor('#000')
-    .text('TO:', toColumnX, startY);
-  
-  doc.font('Helvetica').fontSize(9);
-  let toY = doc.y + 10;
+    .fontSize(9)
+    .fillColor('#333333');
 
-  // ✅ Show wardName if exists, else typedArea, else skip
+  const fromLines = [
+    data.store?.name,
+    ...(data.store?.address
+      ? data.store.address
+          .split(',')
+          .map(line => line.trim())
+          .filter(Boolean)
+      : []),
+    data.store?.phone ? `Phone: ${data.store.phone}` : null,
+    data.store?.email ? `Email: ${data.store.email}` : null,
+  ].filter(Boolean);
+
+  for (const line of fromLines) {
+    doc.text(line, startX, fromY, {
+      width: fromWidth,
+      lineGap: 2,
+    });
+
+    const lineHeight = doc.heightOfString(line, {
+      width: fromWidth,
+      lineGap: 2,
+    });
+
+    fromY += lineHeight + 4;
+  }
+
+  // ============================================================
+  // ORDER DETAILS
+  // ============================================================
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(10)
+    .fillColor('#000000')
+    .text('ORDER RECEIPT', orderColumnX, startY, {
+      width: orderWidth,
+    });
+
+  let orderY = startY + 18;
+
+  const orderDetails = [
+    data.orderNumber
+      ? `Order #: ${data.orderNumber}`
+      : null,
+
+    data.date
+      ? `Date: ${new Date(data.date).toLocaleDateString('en-IN')}`
+      : null,
+
+    data.payment?.method
+      ? `Payment: ${String(data.payment.method).toUpperCase()}`
+      : null,
+
+    data.payment?.status
+      ? `Status: ${String(data.payment.status).toUpperCase()}`
+      : null,
+  ].filter(Boolean);
+
+  doc
+    .font('Helvetica')
+    .fontSize(9)
+    .fillColor('#333333');
+
+  for (const line of orderDetails) {
+    doc.text(line, orderColumnX, orderY, {
+      width: orderWidth,
+      lineGap: 2,
+    });
+
+    const lineHeight = doc.heightOfString(line, {
+      width: orderWidth,
+      lineGap: 2,
+    });
+
+    orderY += lineHeight + 5;
+  }
+
+  // ============================================================
+  // TO / CUSTOMER
+  // ============================================================
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(10)
+    .fillColor('#000000')
+    .text('TO:', toColumnX, startY, {
+      width: toWidth,
+    });
+
+  let toY = startY + 18;
+
+  doc
+    .font('Helvetica')
+    .fontSize(9)
+    .fillColor('#333333');
+
+  // ------------------------------------------------------------
+  // Helper to print one address line
+  // Automatically wraps if the text is long.
+  // ------------------------------------------------------------
+
+  const printToLine = (text, options = {}) => {
+    if (!text) return;
+
+    const fontSize = options.fontSize || 9;
+    const bold = options.bold || false;
+
+    doc
+      .font(bold ? 'Helvetica-Bold' : 'Helvetica')
+      .fontSize(fontSize);
+
+    doc.text(text, toColumnX, toY, {
+      width: toWidth,
+      lineGap: 2,
+      align: 'left',
+    });
+
+    const lineHeight = doc.heightOfString(text, {
+      width: toWidth,
+      lineGap: 2,
+    });
+
+    toY += lineHeight + 4;
+  };
+
+  // ============================================================
+  // CUSTOMER NAME
+  // ============================================================
+
+  if (data.customer?.name) {
+    printToLine(data.customer.name, {
+      bold: true,
+      fontSize: 9,
+    });
+  }
+
+  // ============================================================
+  // WARD / AREA
+  // ============================================================
+
   if (data.wardName) {
-    doc.text(data.wardName, toColumnX, toY, { width: 150 });
-    toY += 15;
+    printToLine(data.wardName);
   } else if (data.typedArea) {
-    doc.text(data.typedArea, toColumnX, toY, { width: 150 });
-    toY += 15;
+    printToLine(data.typedArea);
   }
-  
+
+  // ============================================================
+  // SHIPPING ADDRESS
+  // ============================================================
+
   if (data.shippingAddress) {
+
     if (data.shippingAddress.street) {
-      doc.text(data.shippingAddress.street, toColumnX, toY, { width: 150 });
-      toY += 15;
+      printToLine(data.shippingAddress.street);
     }
+
     if (data.shippingAddress.city) {
-      doc.text(data.shippingAddress.city, toColumnX, toY, { width: 150 });
-      toY += 15;
+      printToLine(data.shippingAddress.city);
     }
+
     if (data.shippingAddress.state) {
-      doc.text(data.shippingAddress.state, toColumnX, toY, { width: 150 });
-      toY += 15;
+      printToLine(data.shippingAddress.state);
     }
+
     if (data.shippingAddress.postalCode) {
-      doc.text(data.shippingAddress.postalCode, toColumnX, toY, { width: 150 });
-      toY += 15;
+      printToLine(data.shippingAddress.postalCode);
     }
+
     if (data.shippingAddress.country) {
-      doc.text(data.shippingAddress.country, toColumnX, toY, { width: 150 });
-      toY += 15;
+      printToLine(data.shippingAddress.country);
     }
+
     if (data.shippingAddress.phone) {
-      doc.text(`Phone: ${data.shippingAddress.phone}`, toColumnX, toY, { width: 150 });
-      toY += 15;
+      printToLine(`Phone: ${data.shippingAddress.phone}`);
     }
+
     if (data.shippingAddress.email) {
-      doc.text(`Email: ${data.shippingAddress.email}`, toColumnX, toY, { width: 150 });
-      toY += 15;
+      printToLine(`Email: ${data.shippingAddress.email}`);
     }
   }
-  
-  const maxHeight = Math.max(fromBottomY - startY, orderY - startY, toY - startY);
-  doc.y = startY + maxHeight + 20;
+
+  // ============================================================
+  // MOVE CURSOR BELOW THE TALLEST COLUMN
+  // ============================================================
+
+  const maxColumnHeight = Math.max(
+    fromY,
+    orderY,
+    toY
+  );
+
+  doc.y = maxColumnHeight + 20;
 };
 
 const addPDFItemsTable = (doc, data) => {
   const tableTop = doc.y + 10;
-  
-  doc.font('Helvetica-Bold')
-     .fontSize(9)
+  doc.font('Helvetica-Bold').fontSize(9)
      .text('PRODUCT', 50, tableTop)
      .text('QTY', 200, tableTop)
      .text('WEIGHT', 260, tableTop)
      .text('PRICE', 350, tableTop)
      .text('TOTAL', 450, tableTop);
-  
-  doc.moveTo(50, tableTop + 15)
-     .lineTo(550, tableTop + 15)
-     .stroke();
-  
+  doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
   let yPosition = tableTop + 25;
-  
   data.items.forEach((item) => {
     const bottomLimit = doc.page.height - doc.page.margins.bottom - 60;
-    if (yPosition > bottomLimit) {
-      doc.addPage();
-      yPosition = 50;
-    }
-    
-    const weightDisplay = item.weight && item.weight > 0 ? `${item.weight}${item.weightUnit === 'gram' ? 'g' : item.weightUnit === 'kg' ? 'kg' : item.weightUnit}` : '-';
-    
-    doc.font('Helvetica')
-       .fontSize(8)
+    if (yPosition > bottomLimit) { doc.addPage(); yPosition = 50; }
+    const weightDisplay = item.weight && item.weight > 0
+      ? `${item.weight}${item.weightUnit === 'gram' ? 'g' : item.weightUnit === 'kg' ? 'kg' : item.weightUnit}`
+      : '-';
+    doc.font('Helvetica').fontSize(8)
        .text(item.name, 50, yPosition, { width: 140 })
        .text(item.quantity.toString(), 200, yPosition)
        .text(weightDisplay, 260, yPosition)
        .text(`${item.price}`, 350, yPosition)
        .text(`${item.total}`, 450, yPosition);
-    
     yPosition += 18;
     doc.fillColor('#000');
   });
-  
   doc.y = yPosition + 10;
 };
 
 const addPDFTotals = (doc, data) => {
   const totalsTop = doc.y + 10;
-  
-  doc.font('Helvetica')
-     .fontSize(9)
+  doc.font('Helvetica').fontSize(9)
      .text(`Subtotal: ${data.pricing.subtotal.toFixed(2)}`, 400, totalsTop)
      .text(`Tax: ${data.pricing.tax.toFixed(2)}`, 400, totalsTop + 14)
      .text(`Shipping: ${data.pricing.shipping.toFixed(2)}`, 400, totalsTop + 28);
-  
-  doc.moveTo(400, totalsTop + 42)
-     .lineTo(520, totalsTop + 42)
-     .stroke();
-  
-  doc.font('Helvetica-Bold')
-     .fontSize(10)
+  doc.moveTo(400, totalsTop + 42).lineTo(520, totalsTop + 42).stroke();
+  doc.font('Helvetica-Bold').fontSize(10)
      .text(`TOTAL: ${data.pricing.total.toFixed(2)}`, 400, totalsTop + 50);
-  
   doc.y = totalsTop + 65;
 };
 
 const addPDFFooter = (doc) => {
   const bottomLimit = doc.page.height - doc.page.margins.bottom - 30;
-
-  if (doc.y < bottomLimit) {
-    doc.moveDown(2);
-  }
-
-  doc.fontSize(8)
-     .fillColor('#666666')
-     .text('', {
-       align: 'center',
-       width: doc.page.width - doc.page.margins.left - doc.page.margins.right
-     });
+  if (doc.y < bottomLimit) doc.moveDown(2);
+  doc.fontSize(8).fillColor('#666666').text('', {
+    align: 'center',
+    width: doc.page.width - doc.page.margins.left - doc.page.margins.right
+  });
 };
 
-// Update order status by orderId
 export const updateOrderStatusByOrderId = async (request, reply) => {
   try {
     const { orderStatus } = request.body;
     const { orderId } = request.params;
+    if (request.user.role !== 'admin') return reply.status(403).send({ success: false, message: 'Admin only' });
 
-    if (request.user.role !== 'admin') {
-      return reply.status(403).send({
-        success: false,
-        message: 'Access denied. Admin only.'
-      });
-    }
-
-    const order = await Order.findOne({ orderId: orderId });
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
+    const order = await Order.findOne({ orderId });
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
 
     const oldStatus = order.orderStatus;
     order.orderStatus = orderStatus;
 
     if (orderStatus === 'delivered') {
       order.deliveredAt = new Date();
-      if (order.paymentMethod === 'cod') {
-        order.paymentStatus = 'completed';
-      }
+      if (order.paymentMethod === 'cod') order.paymentStatus = 'completed';
     }
-
     if (orderStatus === 'cancelled' && oldStatus !== 'cancelled') {
       order.cancelledAt = new Date();
       await restoreProductStock(order.products);
-      
       order.deliveryStatus = 'unassigned';
       order.deliveryAssignedAt = null;
       order.deliveryPickedUpAt = null;
@@ -1545,48 +1275,29 @@ export const updateOrderStatusByOrderId = async (request, reply) => {
     await order.save();
 
     const customerEmail = order.shippingAddress?.email;
-    const customerName = order.shippingAddress?.name || 'Customer';
+    const customerName = order.name || order.shippingAddress?.name || 'Customer';
     const customerPhone = order.shippingAddress?.phone;
-    
+
     if (customerEmail) {
-      try {
-        await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus);
-      } catch (emailError) {
-        console.error('Failed to send status update email:', emailError);
-      }
+      try { await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, oldStatus, orderStatus); } catch (e) { console.error(e); }
     }
-    
-    try {
-      if (customerPhone) {
-        await sendOrderStatusSMS(customerPhone, order, orderStatus);
-      }
-    } catch (smsError) {
-      console.error('Failed to send status update SMS:', smsError);
+    if (customerPhone) {
+      try { await sendOrderStatusSMS(customerPhone, order, orderStatus); } catch (e) { console.error(e); }
     }
 
     return reply.status(200).send({
-      success: true,
-      message: `Order status updated from ${oldStatus} to ${orderStatus}`,
+      success: true, message: `Status updated`,
       order: {
-        orderId: order.orderId,
-        orderStatus: order.orderStatus,
-        deliveryStatus: order.deliveryStatus,
-        paymentStatus: order.paymentStatus,
-        deliveredAt: order.deliveredAt,
-        cancelledAt: order.cancelledAt
+        orderId: order.orderId, name: order.name, orderStatus: order.orderStatus,
+        deliveryStatus: order.deliveryStatus, paymentStatus: order.paymentStatus,
+        deliveredAt: order.deliveredAt, cancelledAt: order.cancelledAt
       }
     });
-
   } catch (error) {
-    console.error('Update order status by orderId error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: error.message
-    });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// Cancel order
 export const cancelOrder = async (request, reply) => {
   try {
     const { id } = request.params;
@@ -1595,383 +1306,152 @@ export const cancelOrder = async (request, reply) => {
     const isAdmin = request.user.role === 'admin';
 
     const order = await Order.findById(id);
-
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
 
     const isOrderOwner = order.user && order.user.toString() === userId;
-    if (!isOrderOwner && !isAdmin) {
-      return reply.status(403).send({
-        success: false,
-        message: 'Not authorized to cancel this order'
-      });
-    }
-
-    if (order.orderStatus === 'cancelled') {
-      return reply.status(400).send({
-        success: false,
-        message: 'Order is already cancelled'
-      });
-    }
+    if (!isOrderOwner && !isAdmin) return reply.status(403).send({ success: false, message: 'Not authorized' });
+    if (order.orderStatus === 'cancelled') return reply.status(400).send({ success: false, message: 'Already cancelled' });
 
     const cancellableStatuses = ['pending', 'confirmed', 'processing'];
     if (!cancellableStatuses.includes(order.orderStatus)) {
-      return reply.status(400).send({
-        success: false,
-        message: `Cannot cancel order that is already ${order.orderStatus}`
-      });
+      return reply.status(400).send({ success: false, message: `Cannot cancel order already ${order.orderStatus}` });
     }
 
     order.orderStatus = 'cancelled';
     order.cancelledAt = new Date();
-    
     order.deliveryStatus = 'unassigned';
     order.deliveryAssignedAt = null;
-    
-    if (cancellationReason) {
-      order.cancellationReason = cancellationReason;
-    }
+    if (cancellationReason) order.cancellationReason = cancellationReason;
 
     await restoreProductStock(order.products);
     await order.save();
 
-    console.log(`✅ Order ${order.orderId} cancelled by ${isAdmin ? 'admin' : 'user'}`);
-
     const customerEmail = order.shippingAddress?.email;
-    const customerName = order.shippingAddress?.name || 'Customer';
+    const customerName = order.name || order.shippingAddress?.name || 'Customer';
     const customerPhone = order.shippingAddress?.phone;
-    
+
     if (customerEmail) {
-      try {
-        await sendOrderCancellationEmail(order, { email: customerEmail, name: customerName }, cancellationReason, isAdmin ? 'admin' : 'user');
-        console.log(`📧 Cancellation email sent to ${customerEmail}`);
-      } catch (emailError) {
-        console.error('Failed to send cancellation email:', emailError);
-      }
+      try { await sendOrderCancellationEmail(order, { email: customerEmail, name: customerName }, cancellationReason, isAdmin ? 'admin' : 'user'); } catch (e) { console.error(e); }
     }
-    
-    try {
-      if (customerPhone) {
-        await sendOrderCancellationSMS(customerPhone, order, cancellationReason);
-        console.log(`📱 Cancellation SMS sent to ${customerPhone}`);
-      }
-    } catch (smsError) {
-      console.error('Failed to send cancellation SMS:', smsError);
+    if (customerPhone) {
+      try { await sendOrderCancellationSMS(customerPhone, order, cancellationReason); } catch (e) { console.error(e); }
     }
 
     return reply.status(200).send({
-      success: true,
-      message: 'Order cancelled successfully. Refund can be processed by admin.',
+      success: true, message: 'Order cancelled',
       order: {
-        _id: order._id,
-        orderId: order.orderId,
-        orderStatus: order.orderStatus,
-        deliveryStatus: order.deliveryStatus,
-        deliveryBoy: order.deliveryBoy,
-        cancelledAt: order.cancelledAt,
-        cancellationReason: order.cancellationReason
+        _id: order._id, orderId: order.orderId, name: order.name, orderStatus: order.orderStatus,
+        deliveryStatus: order.deliveryStatus, deliveryBoy: order.deliveryBoy,
+        cancelledAt: order.cancelledAt, cancellationReason: order.cancellationReason
       }
     });
-
   } catch (error) {
-    console.error('Cancel order error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: 'Server error while cancelling order',
-      error: error.message
-    });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// Delete order (Admin only)
 export const deleteOrder = async (request, reply) => {
   try {
     const { id } = request.params;
-
-    if (request.user.role !== 'admin') {
-      return reply.status(403).send({
-        success: false,
-        message: 'Access denied. Admin only.'
-      });
-    }
-
+    if (request.user.role !== 'admin') return reply.status(403).send({ success: false, message: 'Admin only' });
     const order = await Order.findById(id);
-
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
     await order.deleteOne();
-    console.log(`✅ Admin deleted order ${order.orderId} (Status: ${order.orderStatus})`);
-
-    return reply.status(200).send({
-      success: true,
-      message: 'Order deleted successfully'
-    });
-
+    return reply.status(200).send({ success: true, message: 'Order deleted' });
   } catch (error) {
-    console.error('Delete order error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: error.message
-    });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
-// Update order payment failed
 export const updateOrderPaymentFailed = async (request, reply) => {
   try {
     const { orderId } = request.body;
-
-    if (!orderId) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Order ID is required'
-      });
-    }
-
+    if (!orderId) return reply.status(400).send({ success: false, message: 'Order ID required' });
     const order = await Order.findOne({ orderId });
-
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
     order.paymentStatus = 'failed';
     order.orderStatus = 'cancelled';
     await order.save();
-
-    return reply.status(200).send({
-      success: true,
-      message: 'Order payment status updated to failed',
-      order
-    });
-
+    return reply.status(200).send({ success: true, message: 'Payment marked failed', order });
   } catch (error) {
-    console.error('Update order payment failed error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: error.message
-    });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 
 export const getOrderByRazorpayOrderId = async (request, reply) => {
   try {
     const { razorpayOrderId } = request.params;
-
-    if (!razorpayOrderId) {
-      return reply.code(400).send({
-        success: false,
-        message: 'Razorpay order ID is required'
-      });
-    }
-
-    const order = await Order.findOne({
-      razorpayOrderId
-    }).lean();
-
-    if (!order) {
-      return reply.code(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-
-    return reply.code(200).send({
-      success: true,
-      order
-    });
+    if (!razorpayOrderId) return reply.code(400).send({ success: false, message: 'Razorpay order ID required' });
+    const order = await Order.findOne({ razorpayOrderId }).lean();
+    if (!order) return reply.code(404).send({ success: false, message: 'Order not found' });
+    return reply.code(200).send({ success: true, order });
   } catch (error) {
-    console.error(
-      'Get order by Razorpay order ID error:',
-      error
-    );
-
-    return reply.code(500).send({
-      success: false,
-      message: 'Failed to get payment status',
-      error: error.message
-    });
+    return reply.code(500).send({ success: false, message: error.message });
   }
 };
 
-// Process refund (Admin only)
 export const processRefund = async (request, reply) => {
   try {
     const { id } = request.params;
     const { amount, reason } = request.body;
-    
-    if (request.user.role !== 'admin') {
-      return reply.status(403).send({
-        success: false,
-        message: 'Access denied. Admin only.'
-      });
-    }
-    
+    if (request.user.role !== 'admin') return reply.status(403).send({ success: false, message: 'Admin only' });
+
     const order = await Order.findById(id);
-    
-    if (!order) {
-      return reply.status(404).send({
-        success: false,
-        message: 'Order not found'
-      });
-    }
-    
-    if (order.refundStatus === 'completed') {
-      return reply.status(400).send({
-        success: false,
-        message: 'This order has already been refunded'
-      });
-    }
-    
-    if (order.paymentMethod !== 'razorpay') {
-      return reply.status(400).send({
-        success: false,
-        message: 'Only Razorpay orders can be refunded'
-      });
-    }
-    
-    if (order.paymentStatus !== 'completed') {
-      return reply.status(400).send({
-        success: false,
-        message: 'Only completed payments can be refunded'
-      });
-    }
-    
-    if (!order.paymentId) {
-      return reply.status(400).send({
-        success: false,
-        message: 'No payment ID found for this order'
-      });
-    }
-    
+    if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
+    if (order.refundStatus === 'completed') return reply.status(400).send({ success: false, message: 'Already refunded' });
+    if (order.paymentMethod !== 'razorpay') return reply.status(400).send({ success: false, message: 'Only Razorpay refunds' });
+    if (order.paymentStatus !== 'completed') return reply.status(400).send({ success: false, message: 'Payment not completed' });
+    if (!order.paymentId) return reply.status(400).send({ success: false, message: 'No payment ID' });
+
     const refundAmount = amount || order.finalAmount;
     const refundAmountInPaise = Math.round(refundAmount * 100);
-    
-    console.log(`💰 Processing refund for order ${order.orderId}`);
-    console.log(`   Amount: ${refundAmount}`);
-    console.log(`   Payment ID: ${order.paymentId}`);
-    
+
     try {
       const settings = await getStoreSettings();
-      
-      if (!settings.razorpayKeyId || !settings.razorpayKeySecret) {
-        throw new Error('Razorpay keys not configured in settings');
-      }
-      
+      if (!settings.razorpayKeyId || !settings.razorpayKeySecret) throw new Error('Razorpay keys not configured');
+
       const Razorpay = await import('razorpay');
-      const razorpay = new Razorpay.default({
-        key_id: settings.razorpayKeyId,
-        key_secret: settings.razorpayKeySecret
-      });
-      
+      const razorpay = new Razorpay.default({ key_id: settings.razorpayKeyId, key_secret: settings.razorpayKeySecret });
+
       const refund = await razorpay.payments.refund(order.paymentId, {
-        amount: refundAmountInPaise,
-        speed: 'normal',
-        notes: {
-          orderId: order.orderId,
-          reason: reason || 'Refund processed by admin'
-        }
+        amount: refundAmountInPaise, speed: 'normal',
+        notes: { orderId: order.orderId, reason: reason || 'Admin refund' }
       });
-      
+
       order.refundStatus = 'completed';
-      order.refundMessage = `Refund processed. Refund ID: ${refund.id}. Reason: ${reason || 'Admin initiated refund'}`;
+      order.refundMessage = `Refund ID: ${refund.id}`;
       order.refundedAt = new Date();
       order.paymentStatus = 'refunded';
       await order.save();
-      
-      console.log(`✅ Refund processed successfully. Refund ID: ${refund.id}`);
-      
+
       const customerEmail = order.shippingAddress?.email;
-      const customerName = order.shippingAddress?.name || 'Customer';
       const customerPhone = order.shippingAddress?.phone;
-      
+      const customerName = order.name || order.shippingAddress?.name || 'Customer';
+
       if (customerEmail) {
-        try {
-          await sendOrderRefundEmail(order, { email: customerEmail, name: customerName }, refundAmount, reason);
-          console.log(`📧 Refund email sent to ${customerEmail}`);
-        } catch (emailError) {
-          console.error('Failed to send refund email:', emailError);
-        }
+        try { await sendOrderRefundEmail(order, { email: customerEmail, name: customerName }, refundAmount, reason); } catch (e) { console.error(e); }
       }
-      
       if (customerPhone) {
-        try {
-          await sendOrderRefundSMS(customerPhone, order, refundAmount, reason);
-          console.log(`📱 Refund SMS sent to ${customerPhone}`);
-        } catch (smsError) {
-          console.error('Failed to send refund SMS:', smsError);
-        }
+        try { await sendOrderRefundSMS(customerPhone, order, refundAmount, reason); } catch (e) { console.error(e); }
       }
-      
-      return reply.status(200).send({
-        success: true,
-        message: 'Refund processed successfully',
-        refund: {
-          id: refund.id,
-          amount: refundAmount,
-          status: refund.status,
-          createdAt: refund.created_at
-        }
-      });
-      
+
+      return reply.status(200).send({ success: true, message: 'Refund processed', refund: { id: refund.id, amount: refundAmount, status: refund.status, createdAt: refund.created_at } });
     } catch (refundError) {
-      console.error('❌ Refund failed:', refundError);
-      
+      console.error('Refund failed:', refundError);
       if (refundError.error && refundError.error.description === 'The payment has been fully refunded already') {
         order.refundStatus = 'completed';
-        order.refundMessage = `Payment already refunded on Razorpay`;
+        order.refundMessage = 'Already refunded on Razorpay';
         order.refundedAt = new Date();
         order.paymentStatus = 'refunded';
         await order.save();
-        
-        const customerEmail = order.shippingAddress?.email;
-        const customerPhone = order.shippingAddress?.phone;
-        
-        if (customerEmail) {
-          try {
-            await sendOrderRefundEmail(order, { email: customerEmail, name: 'Customer' }, refundAmount, reason);
-          } catch (e) { console.error(e); }
-        }
-        if (customerPhone) {
-          try {
-            await sendOrderRefundSMS(customerPhone, order, refundAmount, reason);
-          } catch (e) { console.error(e); }
-        }
-        
-        return reply.status(200).send({
-          success: true,
-          message: 'Payment was already refunded. Database updated.',
-          alreadyRefunded: true
-        });
+        return reply.status(200).send({ success: true, message: 'Already refunded', alreadyRefunded: true });
       }
-      
       order.refundStatus = 'failed';
       order.refundMessage = `Refund failed: ${refundError.message}`;
       await order.save();
-      
-      return reply.status(500).send({
-        success: false,
-        message: 'Refund failed',
-        error: refundError.message
-      });
+      return reply.status(500).send({ success: false, message: 'Refund failed', error: refundError.message });
     }
-    
   } catch (error) {
-    console.error('Process refund error:', error);
-    return reply.status(500).send({
-      success: false,
-      message: error.message
-    });
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };

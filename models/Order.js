@@ -3,11 +3,14 @@ import mongoose from 'mongoose';
 const orderSchema = new mongoose.Schema({
   orderId: { type: String, unique: true },
   sNo: { type: Number, unique: true },
-  
+
   // User
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  
-  // Products - ✅ ADDED weight fields
+
+  // ✅ Customer name (kept at top level for quick access)
+  name: { type: String, default: '' },
+
+  // Products
   products: [{
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
     variantId: { type: String, default: null },
@@ -18,13 +21,13 @@ const orderSchema = new mongoose.Schema({
     discountPercentage: { type: Number, default: 0 },
     name: { type: String, required: true },
     image: { type: String },
-    // ✅ WEIGHT FIELDS
     weight: { type: Number, default: 0 },
     weightUnit: { type: String, default: 'gram' }
   }],
-  
+
   // Shipping
   shippingAddress: {
+    name:  { type: String, required: false, default: '' },   // ✅ NEW
     street: { type: String, required: true },
     city: { type: String, required: true },
     state: { type: String, required: true },
@@ -33,21 +36,19 @@ const orderSchema = new mongoose.Schema({
     phone: { type: String, required: true },
     email: { type: String, required: false, default: '' }
   },
-  
+
   // Ward Info
   wardId: { type: Number },
   wardName: { type: String },
   deliveryZone: { type: String },
-  
-  // ✅ NEW: Raw area text the user typed in the "Area" field
   typedArea: { type: String, default: '' },
-  
+
   // Payment
   paymentMethod: { type: String, enum: ['cod', 'razorpay', 'card'], required: true },
   paymentId: { type: String },
   paymentStatus: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' },
   paidAt: { type: Date },
-  
+
   // Refund Info
   refundStatus: {
     type: String,
@@ -56,17 +57,17 @@ const orderSchema = new mongoose.Schema({
   },
   refundMessage: { type: String, default: '' },
   refundedAt: { type: Date, default: null },
-  
+
   // Razorpay
   razorpayOrderId: { type: String, index: true },
-  
+
   // Amounts
   totalAmount: { type: Number, required: true },
   shippingFee: { type: Number, default: 0 },
   taxAmount: { type: Number, default: 0 },
   discountAmount: { type: Number, default: 0 },
   finalAmount: { type: Number, required: true },
-  
+
   // Status
   orderStatus: { type: String, enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'], default: 'pending' },
   cancelledAt: { type: Date },
@@ -78,23 +79,21 @@ const orderSchema = new mongoose.Schema({
   deliveryAssignedAt: { type: Date, default: null },
   deliveryPickedUpAt: { type: Date, default: null },
   deliveryDeliveredAt: { type: Date, default: null },
-  deliveryStatus: { 
-    type: String, 
-    enum: ['unassigned', 'assigned', 'picked_up', 'delivered','waiting', 'returned'],
+  deliveryStatus: {
+    type: String,
+    enum: ['unassigned', 'assigned', 'picked_up', 'delivered', 'waiting', 'returned'],
     default: 'unassigned'
   },
-  
+
 }, { timestamps: true });
 
 // Pre-save middleware for orderId and sNo
 orderSchema.pre('save', async function() {
   if (this.isNew) {
-    // Generate orderId
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
     this.orderId = `ORD-${timestamp}-${random}`;
-    
-    // Auto increment sNo
+
     const lastOrder = await this.constructor.findOne({}, {}, { sort: { sNo: -1 } });
     this.sNo = lastOrder ? lastOrder.sNo + 1 : 1;
   }

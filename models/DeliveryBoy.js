@@ -6,11 +6,14 @@ const deliveryBoySchema = new mongoose.Schema({
   phone: { type: String, required: true, unique: true },
   password: { type: String, required: true },
 
-  // ✅ Karaikudi wards (existing)
-  wardIds: { type: [Number], default: [] },   // Example: [1, 2, 3]
-  wardNames: { type: [String], default: [] }, // Ward names for display
+  // ✅ NEW: which city this delivery boy belongs to
+  city: { type: String, default: '' },   // 'karaikudi' | 'pudukkottai' | ''
 
-  // ✅ NEW: Free-text areas for non-Karaikudi delivery (e.g. "Neyyoor", "Kanyakumari")
+  // Wards (belong to `city` above)
+  wardIds: { type: [Number], default: [] },
+  wardNames: { type: [String], default: [] },
+
+  // Free-text areas for non-ward delivery
   areas: { type: [String], default: [] },
 
   vehicleType: { type: String, enum: ['bike', 'car', 'scooter'], default: 'bike' },

@@ -1,0 +1,1014 @@
+{
+  "municipality": "Pudukkottai Municipality",
+  "metadata": {
+    "total_wards": 42,
+    "coordinate_system": "WGS84 / EPSG:4326",
+    "format": "Decimal Degrees",
+    "municipality_center": { "lat": 10.37970, "lon": 78.82200 },
+    "coverage_area_km2": 18.5,
+    "accuracy_class": "Street-level (~100–200 m)",
+    "reference_source": "Official Ward Road-Ledger Maps + Google Maps Verification",
+    "document_date": "May 2026"
+  },
+  "wards": [
+    {
+      "ward_no": 1,
+      "name": "Samathuvapuram / Periyar Nagar / Pasuponnagar",
+      "centroid": { "lat": 10.39000, "lon": 78.80700 },
+      "total_streets": 62,
+      "adjacent_wards": [2, "4B"],
+      "polygon": [
+        { "vertex": 1, "lat": 10.394000, "lon": 78.802000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.394500, "lon": 78.809500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.391000, "lon": 78.811000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.387500, "lon": 78.810000 },
+        { "vertex": 5, "lat": 10.385500, "lon": 78.807000 },
+        { "vertex": 6, "lat": 10.387000, "lon": 78.802500 },
+        { "vertex": 7, "lat": 10.390500, "lon": 78.801000, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.394000, "lon": 78.802000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Samathuvapuram main road", "Periyar nagar road", "Pasuponnagar 1st-3rd street",
+        "Sivaji nagar", "Vivegananthar nagar", "Rajivgandhi nagar",
+        "Periyar nagar cross 1-8", "Samathuvapuram 1st-5th main"
+      ]
+    },
+    {
+      "ward_no": 2,
+      "name": "Vengateswara Nagar / Subramaniyapuram / Balan Nagar",
+      "centroid": { "lat": 10.38700, "lon": 78.81500 },
+      "total_streets": 45,
+      "adjacent_wards": [1, 3, "4B"],
+      "polygon": [
+        { "vertex": 1, "lat": 10.391000, "lon": 78.811000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.391500, "lon": 78.819500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.388000, "lon": 78.820500, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.384500, "lon": 78.819500 },
+        { "vertex": 5, "lat": 10.383000, "lon": 78.816500 },
+        { "vertex": 6, "lat": 10.384500, "lon": 78.812000 },
+        { "vertex": 7, "lat": 10.387500, "lon": 78.810000, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.391000, "lon": 78.811000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Vengateswara Nagar 1st-5th street", "Subramaniyapuram main street",
+        "Subramaniyapuram 1st-7th street", "Balan nagar 1st-6th street",
+        "Palaniyappa nagar", "NGGO Colony", "Thaila nagar", "Kali kovil road"
+      ]
+    },
+    {
+      "ward_no": 3,
+      "name": "Balaji Nagar / Ram Nagar / Thillai Nagar / VOC Nagar",
+      "centroid": { "lat": 10.38500, "lon": 78.82200 },
+      "total_streets": 38,
+      "adjacent_wards": [2, "4A", 11],
+      "polygon": [
+        { "vertex": 1, "lat": 10.388500, "lon": 78.820000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.389000, "lon": 78.827000, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.385500, "lon": 78.828000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.382000, "lon": 78.827000 },
+        { "vertex": 5, "lat": 10.380500, "lon": 78.823500 },
+        { "vertex": 6, "lat": 10.382000, "lon": 78.819500 },
+        { "vertex": 7, "lat": 10.385000, "lon": 78.818500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.388500, "lon": 78.820000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Balaji nagar 1st-7th cross", "Ram nagar 1st-8th street",
+        "Thillai nagar 1st-6th street", "VOC nagar 2nd-3rd street",
+        "Pudhu nagar 1st-7th street", "Subramani nagar 1st-2nd cross", "Sivarama valagam"
+      ]
+    },
+    {
+      "ward_no": "4A",
+      "name": "Viswadas Nagar / Nehru Nagar / Iraivin Nagar (North)",
+      "centroid": { "lat": 10.38300, "lon": 78.82900 },
+      "total_streets": 28,
+      "adjacent_wards": [3, "4B", 13],
+      "polygon": [
+        { "vertex": 1, "lat": 10.386500, "lon": 78.826000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.386800, "lon": 78.833000, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.383500, "lon": 78.834000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.380000, "lon": 78.833000 },
+        { "vertex": 5, "lat": 10.379000, "lon": 78.829500 },
+        { "vertex": 6, "lat": 10.380500, "lon": 78.826000 },
+        { "vertex": 7, "lat": 10.383500, "lon": 78.825000, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.386500, "lon": 78.826000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Viswadas nagar 1st-10th cross road", "Nehru nagar main road",
+        "Nehru nagar 1st-5th cross", "Iraivin nagar 1st-2nd cross road",
+        "Munnal Ranuvathinar 1st-3rd cross", "Kaivandi thozhilalar colony",
+        "Viswadas nagar to kovilpatti road"
+      ]
+    },
+    {
+      "ward_no": "4B",
+      "name": "Vasanthapuri Nagar / Naipallam / Laxmi Nagar",
+      "centroid": { "lat": 10.38700, "lon": 78.80900 },
+      "total_streets": 32,
+      "adjacent_wards": [1, 2, "4A"],
+      "polygon": [
+        { "vertex": 1, "lat": 10.390500, "lon": 78.806000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.390800, "lon": 78.813000, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.387500, "lon": 78.814000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.384000, "lon": 78.813000 },
+        { "vertex": 5, "lat": 10.382500, "lon": 78.809500 },
+        { "vertex": 6, "lat": 10.384000, "lon": 78.805500 },
+        { "vertex": 7, "lat": 10.387000, "lon": 78.804500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.390500, "lon": 78.806000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Vasanthapuri nagar 1st-8th street", "Naipallam main road",
+        "Naipallam 1st-6th cross road", "Laxmi nagar main road",
+        "Laxmi nagar 1st-2nd cross", "Mullai nagar 1st-2nd cross",
+        "Samathuvapuram road (Singamuthu iyanar kovil to Periyar nagar)"
+      ]
+    },
+    {
+      "ward_no": 5,
+      "name": "LGS Colony / Bharathampal Nagar / Kamathenu Nagar",
+      "centroid": { "lat": 10.38000, "lon": 78.80700 },
+      "total_streets": 35,
+      "adjacent_wards": ["4B", 6, 19],
+      "polygon": [
+        { "vertex": 1, "lat": 10.384000, "lon": 78.803000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.384200, "lon": 78.811500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.380800, "lon": 78.812000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.377000, "lon": 78.810800 },
+        { "vertex": 5, "lat": 10.375800, "lon": 78.807000 },
+        { "vertex": 6, "lat": 10.377200, "lon": 78.803000 },
+        { "vertex": 7, "lat": 10.380800, "lon": 78.802000, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.384000, "lon": 78.803000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "LGS colony 1st-4th street", "Bharathampal nagar 1st-3rd street",
+        "Kamathenu nagar main 1-4", "Kamathenu nagar w-e lanes 1-7",
+        "Abirami nagar e-w", "Mela vethi / Nadu vethi / Keela vethi",
+        "Pidari amman kovil street", "Puthukudisaigal east"
+      ]
+    },
+    {
+      "ward_no": 6,
+      "name": "Anna Nagar / Kammala Theru / Mamundi Madam",
+      "centroid": { "lat": 10.37600, "lon": 78.81300 },
+      "total_streets": 20,
+      "adjacent_wards": [5, 7, 16, 20],
+      "polygon": [
+        { "vertex": 1, "lat": 10.380000, "lon": 78.809500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.380200, "lon": 78.817000, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.376800, "lon": 78.818000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.373000, "lon": 78.816800 },
+        { "vertex": 5, "lat": 10.372000, "lon": 78.813000 },
+        { "vertex": 6, "lat": 10.373500, "lon": 78.809000 },
+        { "vertex": 7, "lat": 10.376800, "lon": 78.808000, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.380000, "lon": 78.809500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Anna nagar main road", "Anna nagar 1st-2nd street", "Kammala theru",
+        "Servarayan pallam 1st-2nd cross", "Mamundi madam street",
+        "Muthaiya nagar 1st-4th street", "Nehru street kaalikovil", "Jothivinayagar back side"
+      ]
+    },
+    {
+      "ward_no": 7,
+      "name": "Adappanvayal / Konarkollai / JJ Nagar / Kalaiman Layout",
+      "centroid": { "lat": 10.37200, "lon": 78.80700 },
+      "total_streets": 25,
+      "adjacent_wards": [6, 8, 19, 21],
+      "polygon": [
+        { "vertex": 1, "lat": 10.376000, "lon": 78.803000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.376200, "lon": 78.811500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.372800, "lon": 78.812200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.369000, "lon": 78.810800 },
+        { "vertex": 5, "lat": 10.368000, "lon": 78.806800 },
+        { "vertex": 6, "lat": 10.369500, "lon": 78.802800 },
+        { "vertex": 7, "lat": 10.372800, "lon": 78.801800, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.376000, "lon": 78.803000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Adappanvayal 1st-8th street", "Konarkollai main road",
+        "Konarkollai 1st-3rd cross street", "IHSDP 1st-2nd street",
+        "JJ nagar", "Kalaiman layout 1st-2nd street", "Sanathi veethi", "Chinaadappankullam road"
+      ]
+    },
+    {
+      "ward_no": 8,
+      "name": "Ambalpuram / Sankaramadam Area",
+      "centroid": { "lat": 10.38000, "lon": 78.82000 },
+      "total_streets": 18,
+      "adjacent_wards": [6, 9, 15, 16],
+      "polygon": [
+        { "vertex": 1, "lat": 10.383500, "lon": 78.817000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.383800, "lon": 78.824000, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.380300, "lon": 78.824800, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.376800, "lon": 78.823800 },
+        { "vertex": 5, "lat": 10.375600, "lon": 78.819800 },
+        { "vertex": 6, "lat": 10.377000, "lon": 78.816000 },
+        { "vertex": 7, "lat": 10.380500, "lon": 78.815200, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.383500, "lon": 78.817000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Ambalpuram 1st-7th street", "Sankaramadam lane",
+        "Sankaramadam line to Ambalpuram cross lane", "North 2nd-5th street",
+        "WE street 2nd-4th street", "Ramachandranpillai rice mill santhu", "Lane b/w 3rd & 2nd"
+      ]
+    },
+    {
+      "ward_no": 9,
+      "name": "Chellappan Nagar / Mappillaiyarkulam / West Main Street",
+      "centroid": { "lat": 10.38400, "lon": 78.82800 },
+      "total_streets": 22,
+      "adjacent_wards": [8, 10, 15, 16],
+      "polygon": [
+        { "vertex": 1, "lat": 10.387500, "lon": 78.825000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.387800, "lon": 78.832000, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.384300, "lon": 78.832800, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.380800, "lon": 78.831800 },
+        { "vertex": 5, "lat": 10.379600, "lon": 78.827800 },
+        { "vertex": 6, "lat": 10.381000, "lon": 78.824000 },
+        { "vertex": 7, "lat": 10.384300, "lon": 78.823200, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.387500, "lon": 78.825000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Chellappan nagar main road", "Chellappan nagar E-W 1st-6th cross",
+        "Chellappan nagar N-S 1st-5th cross", "West main street",
+        "Mappillaiyarkulam road", "Mappillaiyarkulam north bund",
+        "Nagammal kovil road", "North 2nd-4th street", "Pudhu nagar road"
+      ]
+    },
+    {
+      "ward_no": 10,
+      "name": "Vantipettai / Bexcel Nagar / Indira Nagar / Jeeva Nagar",
+      "centroid": { "lat": 10.38780, "lon": 78.83400 },
+      "total_streets": 30,
+      "adjacent_wards": [9, 11, 15],
+      "polygon": [
+        { "vertex": 1, "lat": 10.391200, "lon": 78.830500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.391500, "lon": 78.838500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.388000, "lon": 78.839300, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.384500, "lon": 78.838300 },
+        { "vertex": 5, "lat": 10.383300, "lon": 78.834300 },
+        { "vertex": 6, "lat": 10.384800, "lon": 78.830500 },
+        { "vertex": 7, "lat": 10.388000, "lon": 78.829500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.391200, "lon": 78.830500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Vantipettai main road", "Vantipettai 2nd-5th street",
+        "Bexcel nagar 1st-5th cross", "Indira nagar 1st-3rd street",
+        "Jeeva nagar 1st-3rd street", "Sivanantha puram cross street",
+        "Nathampallam north bund", "Reservoir North 1st-2nd cross", "OHT road", "Kottagaikara theru"
+      ]
+    },
+    {
+      "ward_no": 11,
+      "name": "Srinivasa Nagar / Sathappan Nagar / Driver Colony / Kanna Nagar",
+      "centroid": { "lat": 10.38600, "lon": 78.83900 },
+      "total_streets": 28,
+      "adjacent_wards": [10, 12, 15],
+      "polygon": [
+        { "vertex": 1, "lat": 10.389500, "lon": 78.835800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.389800, "lon": 78.843500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.386300, "lon": 78.844300, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.382800, "lon": 78.843300 },
+        { "vertex": 5, "lat": 10.381600, "lon": 78.839300 },
+        { "vertex": 6, "lat": 10.383000, "lon": 78.835500 },
+        { "vertex": 7, "lat": 10.386300, "lon": 78.834500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.389500, "lon": 78.835800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Srinivasa nagar 1st-5th street", "Sathappan nagar main road",
+        "Sathappan nagar N-E-W 1st-4th cross", "Sathappan nagar N-S 1st-4th cross",
+        "Driver colony 1st-5th street", "Kanna nagar 1st-3rd street",
+        "Srinivasa nagar kanna nagar main road", "Sivanantha puram 1st-2nd street"
+      ]
+    },
+    {
+      "ward_no": 12,
+      "name": "Kamarajapuram (32nd-36th Streets) / Ganesh Nagar",
+      "centroid": { "lat": 10.38150, "lon": 78.84000 },
+      "total_streets": 18,
+      "adjacent_wards": [11, 13, 29],
+      "polygon": [
+        { "vertex": 1, "lat": 10.385000, "lon": 78.837000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.385300, "lon": 78.844500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.381800, "lon": 78.845300, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.378300, "lon": 78.844300 },
+        { "vertex": 5, "lat": 10.377100, "lon": 78.840300 },
+        { "vertex": 6, "lat": 10.378500, "lon": 78.836500 },
+        { "vertex": 7, "lat": 10.381800, "lon": 78.835500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.385000, "lon": 78.837000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Kamarajapuram 32nd-36th street", "Kamarajapuram 33rd-36th cross street",
+        "Ganesh nagar 5th street", "Kamarajapuram 34th street cross near MPP",
+        "Kamarajapuram 32nd street north/south cross", "Kamarajapuram 35th street extension"
+      ]
+    },
+    {
+      "ward_no": 13,
+      "name": "Ganesh Nagar / Kamarajapuram 5th-6th Street / Ayyarkulam",
+      "centroid": { "lat": 10.37750, "lon": 78.83800 },
+      "total_streets": 15,
+      "adjacent_wards": ["4A", 12, 14, 29],
+      "polygon": [
+        { "vertex": 1, "lat": 10.381000, "lon": 78.834800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.381200, "lon": 78.842000, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.377700, "lon": 78.842800, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.374200, "lon": 78.841800 },
+        { "vertex": 5, "lat": 10.373000, "lon": 78.837800 },
+        { "vertex": 6, "lat": 10.374500, "lon": 78.834000 },
+        { "vertex": 7, "lat": 10.377800, "lon": 78.833000, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.381000, "lon": 78.834800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Ganesh nagar 1st-9th street", "Ganesh nagar cross lane",
+        "Kamarajapuram 5th-6th street", "Unavu urpathi kudisai road",
+        "North 3rd street", "Agragaram road",
+        "Ganeshan nagar between 1st-5th cross", "Ayyarkulam cross"
+      ]
+    },
+    {
+      "ward_no": 14,
+      "name": "Marakadai Veedhi / Bose Nagar / Bhuvaneswari Garden",
+      "centroid": { "lat": 10.37400, "lon": 78.84000 },
+      "total_streets": 18,
+      "adjacent_wards": [13, 15, 27, 29],
+      "polygon": [
+        { "vertex": 1, "lat": 10.377500, "lon": 78.836800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.377800, "lon": 78.844500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.374300, "lon": 78.845300, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.370800, "lon": 78.844300 },
+        { "vertex": 5, "lat": 10.369600, "lon": 78.840300 },
+        { "vertex": 6, "lat": 10.371000, "lon": 78.836300 },
+        { "vertex": 7, "lat": 10.374300, "lon": 78.835300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.377500, "lon": 78.836800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Marakadai veedhi 1st-4th street", "Bose nagar 12th-13th street",
+        "East 5th-6th street", "Bhuvaneswari garden main",
+        "Bhuvaneswari garden 1st-6th cross", "Bhuvaneswari Amman kovil line", "Rajakullam kari"
+      ]
+    },
+    {
+      "ward_no": 15,
+      "name": "Ganesh Nagar / Agraharam / Nathampallam East / North Streets",
+      "centroid": { "lat": 10.38700, "lon": 78.84200 },
+      "total_streets": 16,
+      "adjacent_wards": [10, 11, 12, 16],
+      "polygon": [
+        { "vertex": 1, "lat": 10.390500, "lon": 78.839000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.390800, "lon": 78.846200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.387300, "lon": 78.847000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.383800, "lon": 78.846000 },
+        { "vertex": 5, "lat": 10.382600, "lon": 78.842000 },
+        { "vertex": 6, "lat": 10.384000, "lon": 78.838200 },
+        { "vertex": 7, "lat": 10.387300, "lon": 78.837300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.390500, "lon": 78.839000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Ganesh nagar 1st-2nd street", "North 2nd-4th street",
+        "Agraharam street", "Agraharam cross street",
+        "Nathampallam east bund", "Othai theru",
+        "Marakadai main 2nd street", "North main kulakarai"
+      ]
+    },
+    {
+      "ward_no": 16,
+      "name": "South Main Street / Pallavankulam / Old Palace / West Main Street",
+      "centroid": { "lat": 10.38100, "lon": 78.82500 },
+      "total_streets": 22,
+      "adjacent_wards": [6, 8, 9, 17],
+      "polygon": [
+        { "vertex": 1, "lat": 10.384500, "lon": 78.821800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.384800, "lon": 78.829500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.381300, "lon": 78.830200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.377800, "lon": 78.829200 },
+        { "vertex": 5, "lat": 10.376600, "lon": 78.825200 },
+        { "vertex": 6, "lat": 10.378000, "lon": 78.821300 },
+        { "vertex": 7, "lat": 10.381300, "lon": 78.820500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.384500, "lon": 78.821800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "South main street", "South 2nd-3rd street", "West main street",
+        "Pallavankulam road west/north/east", "Old palace 1st-2nd street",
+        "Swamy sanathi theru", "Vidopaba kovil road",
+        "Daily market / Flower market", "PNB lane", "Van market road"
+      ]
+    },
+    {
+      "ward_no": 17,
+      "name": "West Streets / Post Office Road / Lakshmipuram / Santhanapuram",
+      "centroid": { "lat": 10.37750, "lon": 78.82300 },
+      "total_streets": 18,
+      "adjacent_wards": [16, 18, 20],
+      "polygon": [
+        { "vertex": 1, "lat": 10.381000, "lon": 78.819800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.381200, "lon": 78.827200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.377800, "lon": 78.828000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.374300, "lon": 78.827000 },
+        { "vertex": 5, "lat": 10.373100, "lon": 78.823000 },
+        { "vertex": 6, "lat": 10.374500, "lon": 78.819000 },
+        { "vertex": 7, "lat": 10.377800, "lon": 78.818300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.381000, "lon": 78.819800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "West 2nd-4th street", "Post office road", "Post office cross lane 1-2",
+        "South main street", "Rajagopal Takis street",
+        "Lakshmipuram 1st-2nd street", "Santhanapuram 5th-6th street",
+        "Thendapaipuram 1st-2nd street", "Vairanachi oorani santhu"
+      ]
+    },
+    {
+      "ward_no": 18,
+      "name": "Santhai Pettai / Thontaiman Nagar / West 5th-7th Street",
+      "centroid": { "lat": 10.37400, "lon": 78.82000 },
+      "total_streets": 20,
+      "adjacent_wards": [17, 19, 20, 21],
+      "polygon": [
+        { "vertex": 1, "lat": 10.377500, "lon": 78.816500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.377800, "lon": 78.824500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.374300, "lon": 78.825200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.370800, "lon": 78.824200 },
+        { "vertex": 5, "lat": 10.369600, "lon": 78.820200 },
+        { "vertex": 6, "lat": 10.371000, "lon": 78.816200 },
+        { "vertex": 7, "lat": 10.374300, "lon": 78.815500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.377500, "lon": 78.816500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "West 5th-7th street", "Santhai pettai road",
+        "Santhai pettai N-S 1st-2nd street", "Santhai pettai E-W 1st-3rd street",
+        "Thontaiman nagar road", "Akkatchiyavayal street",
+        "Akatchya kulam", "Weekly market road"
+      ]
+    },
+    {
+      "ward_no": 19,
+      "name": "Kalyanaramapuram / Periyakulam / Melamettu Theru",
+      "centroid": { "lat": 10.37000, "lon": 78.81300 },
+      "total_streets": 22,
+      "adjacent_wards": [5, 7, 18, 20],
+      "polygon": [
+        { "vertex": 1, "lat": 10.373500, "lon": 78.809000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.373800, "lon": 78.817500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.370300, "lon": 78.818200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.366800, "lon": 78.817000 },
+        { "vertex": 5, "lat": 10.365600, "lon": 78.813000 },
+        { "vertex": 6, "lat": 10.367000, "lon": 78.808800 },
+        { "vertex": 7, "lat": 10.370300, "lon": 78.808000, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.373500, "lon": 78.809000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Kalyanaramapuram 1st-4th street", "Kalyanaramapuram sannathi theru",
+        "Kalyanaramapuram 1st-4th cross road", "Melamettu theru",
+        "Melamettu cross street", "Periyakulam south/north bank",
+        "Old kovilpatti-trichy road", "Ramalingam street", "Chinna keni theru"
+      ]
+    },
+    {
+      "ward_no": 20,
+      "name": "Maharajapuram / SPM Nagar / Chola Real Estate",
+      "centroid": { "lat": 10.37300, "lon": 78.82200 },
+      "total_streets": 25,
+      "adjacent_wards": [6, 17, 18, 19, 21],
+      "polygon": [
+        { "vertex": 1, "lat": 10.376500, "lon": 78.818300, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.376800, "lon": 78.826200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.373300, "lon": 78.827000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.369800, "lon": 78.826000 },
+        { "vertex": 5, "lat": 10.368600, "lon": 78.822000 },
+        { "vertex": 6, "lat": 10.370000, "lon": 78.818000 },
+        { "vertex": 7, "lat": 10.373300, "lon": 78.817200, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.376500, "lon": 78.818300, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Maharajapuram main road", "Maharajapuram 1st-2nd street",
+        "SPM nagar east", "Mariamman kovil street",
+        "Chola real estate north 1st-5th cross", "Chola real estate south 1st-5th cross",
+        "Mankulam road", "Ponnappan orani street", "Keelavethi"
+      ]
+    },
+    {
+      "ward_no": 21,
+      "name": "Thiruvappur / Ponnappan Orani / Kattumariamman Kovil / VOC Nagar",
+      "centroid": { "lat": 10.36800, "lon": 78.81800 },
+      "total_streets": 35,
+      "adjacent_wards": [7, 18, 20, 22],
+      "polygon": [
+        { "vertex": 1, "lat": 10.371500, "lon": 78.814000, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.371800, "lon": 78.822500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.368300, "lon": 78.823200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.364800, "lon": 78.822200 },
+        { "vertex": 5, "lat": 10.363600, "lon": 78.818200 },
+        { "vertex": 6, "lat": 10.365000, "lon": 78.814000 },
+        { "vertex": 7, "lat": 10.368300, "lon": 78.813200, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.371500, "lon": 78.814000, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Thiruvappur big street", "Ponnappan orani north/east",
+        "Kattumariamman kovil road", "VOC nagar road",
+        "Amman nagar 1st-4th street", "Keela vethi / Velar theru",
+        "Park road", "SVS nagar", "Kallar theru", "Burial road"
+      ]
+    },
+    {
+      "ward_no": 22,
+      "name": "Malaiyappa Nagar / Rajagopalapuram / Pappankulam / Varipatti",
+      "centroid": { "lat": 10.37900, "lon": 78.83100 },
+      "total_streets": 25,
+      "adjacent_wards": [21, 23, 25, 26],
+      "polygon": [
+        { "vertex": 1, "lat": 10.382500, "lon": 78.827800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.382800, "lon": 78.835500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.379300, "lon": 78.836200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.375800, "lon": 78.835200 },
+        { "vertex": 5, "lat": 10.374600, "lon": 78.831200 },
+        { "vertex": 6, "lat": 10.376000, "lon": 78.827300 },
+        { "vertex": 7, "lat": 10.379300, "lon": 78.826600, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.382500, "lon": 78.827800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Malaiyappa nagar 1st-3rd cross", "Rajagopalapuram main road",
+        "Rajagopalapuram 1st-4th street", "Rajagopalapuram 1st-3rd cross",
+        "Pappankulam 1st-2nd street", "Anna nagar cross section",
+        "Good shed road", "Saratha garden 1st road",
+        "Basil nagar 1st-5th cross", "Jamal nagar 1st-2nd street"
+      ]
+    },
+    {
+      "ward_no": 23,
+      "name": "Charles Nagar / Janaki Nagar / Ezhil Nagar / Sathiyamoorthy Housing",
+      "centroid": { "lat": 10.37550, "lon": 78.83400 },
+      "total_streets": 25,
+      "adjacent_wards": [22, 24, 25, 27],
+      "polygon": [
+        { "vertex": 1, "lat": 10.379000, "lon": 78.830800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.379200, "lon": 78.838200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.375700, "lon": 78.839000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.372200, "lon": 78.838000 },
+        { "vertex": 5, "lat": 10.371000, "lon": 78.834000 },
+        { "vertex": 6, "lat": 10.372400, "lon": 78.830000 },
+        { "vertex": 7, "lat": 10.375700, "lon": 78.829200, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.379000, "lon": 78.830800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Charles nagar main", "Charles nagar 1st-2nd street",
+        "Charles nagar double road", "Janaki nagar main road",
+        "Janaki nagar 1st-5th cross", "Ezhil nagar / Ezhil nagar extension",
+        "Rani Rama Devi nagar", "Sathiyamoorthy housing unit",
+        "Palace nagar", "Alangulam road"
+      ]
+    },
+    {
+      "ward_no": 24,
+      "name": "Periyar Nagar (Main Road / Plot Areas 724-1154)",
+      "centroid": { "lat": 10.38200, "lon": 78.83800 },
+      "total_streets": 22,
+      "adjacent_wards": [23, 25, 36],
+      "polygon": [
+        { "vertex": 1, "lat": 10.385500, "lon": 78.834800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.385800, "lon": 78.842200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.382300, "lon": 78.843000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.378800, "lon": 78.842000 },
+        { "vertex": 5, "lat": 10.377600, "lon": 78.838000 },
+        { "vertex": 6, "lat": 10.379000, "lon": 78.834100 },
+        { "vertex": 7, "lat": 10.382300, "lon": 78.833300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.385500, "lon": 78.834800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Periyar nagar main road 724-1154", "Periyar nagar plot 503-667",
+        "Periyar nagar plot 1052-1095", "Vairam school road",
+        "Vairam school east/west side", "Railway station road",
+        "TVS road to railway station road", "D.D Plan road"
+      ]
+    },
+    {
+      "ward_no": 25,
+      "name": "Kamban Nagar / Santhanapuram / Monokaran Street / Raja Vijaya Nagar",
+      "centroid": { "lat": 10.37600, "lon": 78.83700 },
+      "total_streets": 22,
+      "adjacent_wards": [22, 23, 24, 26, 29],
+      "polygon": [
+        { "vertex": 1, "lat": 10.379500, "lon": 78.833800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.379800, "lon": 78.841200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.376300, "lon": 78.842000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.372800, "lon": 78.841000 },
+        { "vertex": 5, "lat": 10.371600, "lon": 78.837000 },
+        { "vertex": 6, "lat": 10.373000, "lon": 78.833000 },
+        { "vertex": 7, "lat": 10.376300, "lon": 78.832200, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.379500, "lon": 78.833800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Kamban nagar 1st-12th street", "Santhanapuram 1st-7th street",
+        "Sathyamoorthy road", "Union office road", "Monokaran street",
+        "Raja vijaya nagar 1st street", "Muthukarrupa Konar nagar",
+        "D.D Plan road", "Kamban nagar plot 1279-1421"
+      ]
+    },
+    {
+      "ward_no": 26,
+      "name": "Nizam Colony / SS Nagar / AMA Nagar / NGGO Colony / Begum Street",
+      "centroid": { "lat": 10.37300, "lon": 78.83000 },
+      "total_streets": 22,
+      "adjacent_wards": [22, 25, 27],
+      "polygon": [
+        { "vertex": 1, "lat": 10.376500, "lon": 78.826500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.376800, "lon": 78.834200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.373300, "lon": 78.835000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.369800, "lon": 78.834000 },
+        { "vertex": 5, "lat": 10.368600, "lon": 78.830000 },
+        { "vertex": 6, "lat": 10.370000, "lon": 78.826000 },
+        { "vertex": 7, "lat": 10.373300, "lon": 78.825200, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.376500, "lon": 78.826500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Nizam colony main road", "Nizam street", "Begum road",
+        "Begum road cross lane 1-2", "SS nagar main road / 1st-2nd street",
+        "AMA nagar 1st-2nd street", "NGGO colony 1st-3rd street",
+        "Hajee Abdul rajack road", "Alangudi road",
+        "Annai nagar 1st-2nd street", "Bheema nagar"
+      ]
+    },
+    {
+      "ward_no": 27,
+      "name": "South 2nd-3rd Street / Nellimandi / Chakaravarthi / Pandurenga Lane",
+      "centroid": { "lat": 10.37600, "lon": 78.82600 },
+      "total_streets": 18,
+      "adjacent_wards": [14, 23, 26, 28],
+      "polygon": [
+        { "vertex": 1, "lat": 10.379500, "lon": 78.822800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.379800, "lon": 78.830500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.376300, "lon": 78.831200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.372800, "lon": 78.830200 },
+        { "vertex": 5, "lat": 10.371600, "lon": 78.826200 },
+        { "vertex": 6, "lat": 10.373000, "lon": 78.822200 },
+        { "vertex": 7, "lat": 10.376300, "lon": 78.821500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.379500, "lon": 78.822800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "South 2nd-3rd street", "Nellimandi street", "Chakaravarthi lane",
+        "Pandurenga lane", "East 2nd-3rd street",
+        "Town bank lane", "Rani school lane", "Perummal ayyangar land area"
+      ]
+    },
+    {
+      "ward_no": 28,
+      "name": "Gandhi Nagar / Marthandapuram / Ayyanapuram / Workers Quarters",
+      "centroid": { "lat": 10.37000, "lon": 78.82600 },
+      "total_streets": 22,
+      "adjacent_wards": [21, 27, 29, 32],
+      "polygon": [
+        { "vertex": 1, "lat": 10.373500, "lon": 78.822500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.373800, "lon": 78.830000, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.370300, "lon": 78.830800, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.366800, "lon": 78.829700 },
+        { "vertex": 5, "lat": 10.365600, "lon": 78.825800 },
+        { "vertex": 6, "lat": 10.367000, "lon": 78.821700 },
+        { "vertex": 7, "lat": 10.370300, "lon": 78.821000, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.373500, "lon": 78.822500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Gandhi nagar 1st-3rd street", "Gandhi nagar 1st-7th cross street",
+        "Marthandapuram 1st-2nd street", "Marthandapuram 1st-3rd cross",
+        "Ayyanapuram 1st-3rd street", "Thirukkattalai road",
+        "Workers quarters 1st-3rd street", "Alangudi road"
+      ]
+    },
+    {
+      "ward_no": 29,
+      "name": "Kamarajapuram (7th-28th Streets) / Bose Nagar 14th Street",
+      "centroid": { "lat": 10.37500, "lon": 78.84300 },
+      "total_streets": 22,
+      "adjacent_wards": [12, 13, 14, 25, 30],
+      "polygon": [
+        { "vertex": 1, "lat": 10.378500, "lon": 78.839800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.378800, "lon": 78.847300, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.375300, "lon": 78.848000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.371800, "lon": 78.847000 },
+        { "vertex": 5, "lat": 10.370600, "lon": 78.843000 },
+        { "vertex": 6, "lat": 10.372000, "lon": 78.839100 },
+        { "vertex": 7, "lat": 10.375300, "lon": 78.838300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.378500, "lon": 78.839800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Kamarajapuram 7th-10th street", "Kamarajapuram 20th-28th street",
+        "Kamarajapuram 10th 1st-3rd cross", "Kamarajapuram 27th-28th cross street",
+        "Bose nagar 14th street", "Burial ground road",
+        "Kamarajapuram 1st-10th street", "Kamarajapuram 22nd-24th street"
+      ]
+    },
+    {
+      "ward_no": 30,
+      "name": "Kamarajapuram (16th-31st Streets) / Ottakulam Road",
+      "centroid": { "lat": 10.37150, "lon": 78.84300 },
+      "total_streets": 15,
+      "adjacent_wards": [29, 31, 33],
+      "polygon": [
+        { "vertex": 1, "lat": 10.375000, "lon": 78.839500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.375200, "lon": 78.847000, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.371700, "lon": 78.847800, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.368200, "lon": 78.846700 },
+        { "vertex": 5, "lat": 10.367000, "lon": 78.842800 },
+        { "vertex": 6, "lat": 10.368400, "lon": 78.838800 },
+        { "vertex": 7, "lat": 10.371700, "lon": 78.838000, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.375000, "lon": 78.839500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Kamarajapuram 16th-19th street", "Kamarajapuram 25th-31st street",
+        "Kamarajapuram 17th-27th cross street", "Kamarajapuram 20th cross",
+        "Ottakulam road", "Ottakulam cross road",
+        "Kamarajapuram 29th street 1st-3rd cross", "Senkal pallam road"
+      ]
+    },
+    {
+      "ward_no": 31,
+      "name": "Bose Nagar (1st-11th Streets)",
+      "centroid": { "lat": 10.37300, "lon": 78.84900 },
+      "total_streets": 12,
+      "adjacent_wards": [29, 30, 32, 34],
+      "polygon": [
+        { "vertex": 1, "lat": 10.376500, "lon": 78.845800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.376800, "lon": 78.853500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.373300, "lon": 78.854200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.369800, "lon": 78.853200 },
+        { "vertex": 5, "lat": 10.368600, "lon": 78.849200 },
+        { "vertex": 6, "lat": 10.370000, "lon": 78.845200 },
+        { "vertex": 7, "lat": 10.373300, "lon": 78.844500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.376500, "lon": 78.845800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Bose nagar 1st street", "Bose nagar 2nd street", "Bose nagar 3rd street",
+        "Bose nagar 4th-4D street", "Bose nagar 5th-6th street",
+        "Bose nagar 7th-8th street", "Bose nagar 9th-10th street", "Bose nagar 11th street"
+      ]
+    },
+    {
+      "ward_no": 32,
+      "name": "Gandhi Nagar / Sakthi Nagar / Senthamil Nagar / Moovendar Nagar",
+      "centroid": { "lat": 10.36650, "lon": 78.82900 },
+      "total_streets": 40,
+      "adjacent_wards": [28, 31, 33, 38],
+      "polygon": [
+        { "vertex": 1, "lat": 10.370000, "lon": 78.825500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.370200, "lon": 78.833500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.366700, "lon": 78.834200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.363200, "lon": 78.833200 },
+        { "vertex": 5, "lat": 10.362000, "lon": 78.829200 },
+        { "vertex": 6, "lat": 10.363400, "lon": 78.825200 },
+        { "vertex": 7, "lat": 10.366700, "lon": 78.824500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.370000, "lon": 78.825500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Gandhi nagar 4th-8th street", "Gandhi nagar 1st-8th cross street",
+        "Sakthi nagar main road", "Siva sakthi nagar 1st-3rd cross",
+        "Senthamil nagar 1st-5th street", "Moovendar nagar 1st-3rd street",
+        "Tamil nagar main road", "A1 nagar cross",
+        "Gandhi nagar to Bose nagar connecting road"
+      ]
+    },
+    {
+      "ward_no": 33,
+      "name": "Usilangulam / Sathyamoorthy Nagar / Iyyanar Nagar",
+      "centroid": { "lat": 10.36500, "lon": 78.83600 },
+      "total_streets": 30,
+      "adjacent_wards": [30, 32, 34, 38],
+      "polygon": [
+        { "vertex": 1, "lat": 10.368500, "lon": 78.832500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.368800, "lon": 78.840200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.365300, "lon": 78.841000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.361800, "lon": 78.840000 },
+        { "vertex": 5, "lat": 10.360600, "lon": 78.836000 },
+        { "vertex": 6, "lat": 10.362000, "lon": 78.832000 },
+        { "vertex": 7, "lat": 10.365300, "lon": 78.831300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.368500, "lon": 78.832500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Usilangulam 1st-9th street", "Usilangulam 4th-6th extension",
+        "Sathyamoorthy main road", "Sathyamoorthy nagar 1st-7th street",
+        "Sathyamoorthy nagar east/west side", "Iyyanar nagar",
+        "Ayyanar thidal road 1", "Thadikonda iyyanar kovil",
+        "Iyyanar thidal to Sathyamoorthy connecting road"
+      ]
+    },
+    {
+      "ward_no": 34,
+      "name": "Thiruvalluvar Nagar / Golden Nagar / New Golden Nagar / Palace Nagar",
+      "centroid": { "lat": 10.36900, "lon": 78.84300 },
+      "total_streets": 28,
+      "adjacent_wards": [31, 33, 35, 39],
+      "polygon": [
+        { "vertex": 1, "lat": 10.372500, "lon": 78.839800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.372800, "lon": 78.847300, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.369300, "lon": 78.848000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.365800, "lon": 78.847000 },
+        { "vertex": 5, "lat": 10.364600, "lon": 78.843000 },
+        { "vertex": 6, "lat": 10.366000, "lon": 78.839000 },
+        { "vertex": 7, "lat": 10.369300, "lon": 78.838300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.372500, "lon": 78.839800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Thiruvalluvar nagar 1st-4th street", "Thiruvalluvar nagar 1st-4th cross",
+        "Golden nagar 1st-5th cross", "New golden nagar 1st-5th street",
+        "Palace nagar 1st-2nd street", "Anandavan nagar", "Siraj nagar",
+        "Andavar nagar 1st-2nd street", "Pallivasal and Siraj nagar"
+      ]
+    },
+    {
+      "ward_no": 35,
+      "name": "Kalif Nagar / Subramani Nagar / SLV Subramani Nagar / Chidamparam Nagar",
+      "centroid": { "lat": 10.36500, "lon": 78.84000 },
+      "total_streets": 22,
+      "adjacent_wards": [34, 36, 40],
+      "polygon": [
+        { "vertex": 1, "lat": 10.368500, "lon": 78.836800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.368800, "lon": 78.844500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.365300, "lon": 78.845200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.361800, "lon": 78.844200 },
+        { "vertex": 5, "lat": 10.360600, "lon": 78.840200 },
+        { "vertex": 6, "lat": 10.362000, "lon": 78.836200 },
+        { "vertex": 7, "lat": 10.365300, "lon": 78.835500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.368500, "lon": 78.836800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Kalif nagar 2nd-3rd street", "Mohammadiyar nagar",
+        "Subramani nagar main road", "Subramani nagar east/west 1st-4th street",
+        "SLV Subramani nagar main road", "SLV Subramani nagar 1st-3rd street",
+        "Chidamparam nagar", "Chidamparam nagar cross street",
+        "Shanmuga nagar connecting road"
+      ]
+    },
+    {
+      "ward_no": 36,
+      "name": "Shanmuga Nagar / Bharath Nagar / Muthu Nagar / Periyar Nagar / Maraimalai Nagar",
+      "centroid": { "lat": 10.36900, "lon": 78.84900 },
+      "total_streets": 30,
+      "adjacent_wards": [24, 35, 37, 40],
+      "polygon": [
+        { "vertex": 1, "lat": 10.372500, "lon": 78.845800, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.372800, "lon": 78.853500, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.369300, "lon": 78.854200, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.365800, "lon": 78.853200 },
+        { "vertex": 5, "lat": 10.364600, "lon": 78.849200 },
+        { "vertex": 6, "lat": 10.366000, "lon": 78.845200 },
+        { "vertex": 7, "lat": 10.369300, "lon": 78.844500, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.372500, "lon": 78.845800, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Shanmuga nagar main road", "Shanmuga nagar 1st-4th street",
+        "Bharath nagar 1st-2nd street", "Bharath nagar 1st-3rd cross",
+        "Muthu nagar main road", "Muthu nagar N-S 1st-2nd cross",
+        "Periyar nagar plot 302-502", "Maraimalai nagar west",
+        "Salaam nagar", "Valliappa nagar 1st-2nd street", "Manikam nagar road"
+      ]
+    },
+    {
+      "ward_no": 37,
+      "name": "Poonga Nagar / Kalaivanar Street / Vattapatti / Ponchalai Nagar",
+      "centroid": { "lat": 10.36400, "lon": 78.84700 },
+      "total_streets": 28,
+      "adjacent_wards": [36, 38, 40, 41],
+      "polygon": [
+        { "vertex": 1, "lat": 10.367500, "lon": 78.843500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.367800, "lon": 78.851200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.364300, "lon": 78.852000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.360800, "lon": 78.851000 },
+        { "vertex": 5, "lat": 10.359600, "lon": 78.847000 },
+        { "vertex": 6, "lat": 10.361000, "lon": 78.843000 },
+        { "vertex": 7, "lat": 10.364300, "lon": 78.842200, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.367500, "lon": 78.843500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Poonga nagar west main road", "Poonga nagar west 1st-6th cross",
+        "Poonga nagar mid portion main road", "Poonga nagar mid 1st-4th cross",
+        "Poonga nagar 1st-4th cross east", "Kalaivanar street",
+        "Kalaivanar 1st-4th cross", "Vattapatti main road",
+        "Vattapatti karpaga nagar main road", "Ponchalai nagar cross road",
+        "Puduvayal road", "SBI to Vattapatti road"
+      ]
+    },
+    {
+      "ward_no": 38,
+      "name": "Koodal Nagar / Meenakshi Nagar / KSM Nagar / Mullai Nagar / Bharath Nagar",
+      "centroid": { "lat": 10.36200, "lon": 78.83500 },
+      "total_streets": 32,
+      "adjacent_wards": [32, 33, 37, 41],
+      "polygon": [
+        { "vertex": 1, "lat": 10.365500, "lon": 78.831500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.365800, "lon": 78.839300, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.362300, "lon": 78.840000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.358800, "lon": 78.839000 },
+        { "vertex": 5, "lat": 10.357600, "lon": 78.835000 },
+        { "vertex": 6, "lat": 10.359000, "lon": 78.831000 },
+        { "vertex": 7, "lat": 10.362300, "lon": 78.830300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.365500, "lon": 78.831500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Koodal nagar main road", "Koodal nagar 1st-4th street",
+        "Koodal nagar east cross 1st-2nd", "Koodal nagar south 1st-2nd",
+        "Meenakshi nagar 1st-6th cross", "KSM nagar 1st-7th cross street",
+        "Mullai nagar main road", "Mullai nagar 1st-3rd cross street",
+        "Bharath nagar main road", "Bharath nagar 1st cross", "Sivankovil road"
+      ]
+    },
+    {
+      "ward_no": 39,
+      "name": "Diamond Nagar / New Diamond Nagar / Laxmi Nagar / Srinagar / Dhivyagarden",
+      "centroid": { "lat": 10.36300, "lon": 78.84300 },
+      "total_streets": 40,
+      "adjacent_wards": [34, 35, 40, 42],
+      "polygon": [
+        { "vertex": 1, "lat": 10.366500, "lon": 78.839500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.366800, "lon": 78.847200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.363300, "lon": 78.848000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.359800, "lon": 78.847000 },
+        { "vertex": 5, "lat": 10.358600, "lon": 78.843000 },
+        { "vertex": 6, "lat": 10.360000, "lon": 78.839000 },
+        { "vertex": 7, "lat": 10.363300, "lon": 78.838300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.366500, "lon": 78.839500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "New diamond nagar 1st-6th street", "New diamond nagar west 1st-8th cross",
+        "New diamond nagar east 1st-9th cross", "Laxmi nagar 1st-4th street",
+        "Laxmi nagar 1st-4th cross", "Srinagar 1st-3rd street",
+        "Dhivyagarden 1st-3rd street", "Kamala nagar 1st-2nd cross",
+        "TVK nagar 1st-5th street", "Kusalakudi 1st-2nd street",
+        "Maraimalai nagar 1st-2nd street", "Veeramuthu nagar",
+        "Ponnampatti road", "Kalaingar nagar"
+      ]
+    },
+    {
+      "ward_no": 40,
+      "name": "Chinnappa Nagar / Azhagar Nagar / Chakravarthy Nagar / Ayyappan Nagar / Diamond Nagar",
+      "centroid": { "lat": 10.36000, "lon": 78.84400 },
+      "total_streets": 45,
+      "adjacent_wards": [35, 36, 37, 39, 41],
+      "polygon": [
+        { "vertex": 1, "lat": 10.363500, "lon": 78.840500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.363800, "lon": 78.848200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.360300, "lon": 78.849000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.356800, "lon": 78.848000 },
+        { "vertex": 5, "lat": 10.355600, "lon": 78.844000 },
+        { "vertex": 6, "lat": 10.357000, "lon": 78.840000 },
+        { "vertex": 7, "lat": 10.360300, "lon": 78.839200, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.363500, "lon": 78.840500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Chinnappa nagar main 1st-2nd", "Chinnappa nagar 1st-6th street",
+        "Chinnappa nagar east 1st-3rd street", "Sri nagar 1st-5th street",
+        "Azhagar nagar 1st-6th cross street", "Chakravarthy nagar 1st-4th street",
+        "Ayyappan nagar main road", "Ayyappan nagar 1st-4th cross",
+        "Diamond nagar 1st-12th cross", "Sengai nagar 1st-2nd cross",
+        "Chellaiyah nagar main", "Abdul kalam nagar 1st-6th cross"
+      ]
+    },
+    {
+      "ward_no": 41,
+      "name": "Pon Nagar / Balaji Nagar / Sengaithoppu Extension",
+      "centroid": { "lat": 10.35700, "lon": 78.84000 },
+      "total_streets": 35,
+      "adjacent_wards": [37, 38, 40, 42],
+      "polygon": [
+        { "vertex": 1, "lat": 10.360500, "lon": 78.836500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.360800, "lon": 78.844300, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.357300, "lon": 78.845000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.353800, "lon": 78.844000 },
+        { "vertex": 5, "lat": 10.352600, "lon": 78.840000 },
+        { "vertex": 6, "lat": 10.354000, "lon": 78.836000 },
+        { "vertex": 7, "lat": 10.357300, "lon": 78.835300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.360500, "lon": 78.836500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Pon nagar main road", "Pon nagar 1st-19th cross street",
+        "Pon nagar 1st-2nd road", "Balaji nagar main road",
+        "Balaji nagar 1st-6th street", "Sengaithoppu extension 6th-8th cross",
+        "Pon nagar extension 1st-2nd cross", "Marupani road (EVR nagar junction)",
+        "Sengai thoppu road", "Kurunji cross road",
+        "Pon nagar to mettupatti connecting road"
+      ]
+    },
+    {
+      "ward_no": 42,
+      "name": "Murugan Colony / Ashok Nagar / KLKS Nagar / Kumaran Nagar / EB Colony",
+      "centroid": { "lat": 10.35500, "lon": 78.84400 },
+      "total_streets": 42,
+      "adjacent_wards": [39, 40, 41],
+      "polygon": [
+        { "vertex": 1, "lat": 10.358500, "lon": 78.840500, "note": "Start/End" },
+        { "vertex": 2, "lat": 10.358800, "lon": 78.848200, "note": "N vertex" },
+        { "vertex": 3, "lat": 10.355300, "lon": 78.849000, "note": "NE vertex" },
+        { "vertex": 4, "lat": 10.351800, "lon": 78.848000 },
+        { "vertex": 5, "lat": 10.350600, "lon": 78.844000 },
+        { "vertex": 6, "lat": 10.352000, "lon": 78.840000 },
+        { "vertex": 7, "lat": 10.355300, "lon": 78.839300, "note": "SW vertex" },
+        { "vertex": 8, "lat": 10.358500, "lon": 78.840500, "note": "SE vertex / Close" }
+      ],
+      "key_streets": [
+        "Murugan colony main road", "Murugan colony 1st-2nd street",
+        "Murugan colony 1st extension", "Ashok nagar main road",
+        "Ashok nagar 1st-7th cross street", "Ashok nagar 1st-3rd extension",
+        "KLKS nagar 1st-14th cross street", "KLKS nagar main road",
+        "Kumaran nagar 1st-5th street", "Kumaran nagar 1st-5th cross",
+        "EB colony 1st-3rd street", "Ramachandra nagar 1st-5th cross",
+        "Selva nagar road", "EVR nagar periyar 3rd street"
+      ]
+    }
+  ]
+}
