@@ -38,7 +38,7 @@ const orderSchema = new mongoose.Schema({
   },
 
   // Ward Info
-  wardId: { type: Number },
+wardId: { type: mongoose.Schema.Types.Mixed },
   wardName: { type: String },
   deliveryZone: { type: String },
   typedArea: { type: String, default: '' },

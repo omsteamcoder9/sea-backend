@@ -10,7 +10,7 @@ const deliveryBoySchema = new mongoose.Schema({
   city: { type: String, default: '' },   // 'karaikudi' | 'pudukkottai' | ''
 
   // Wards (belong to `city` above)
-  wardIds: { type: [Number], default: [] },
+wardIds: { type: [mongoose.Schema.Types.Mixed], default: [] },
   wardNames: { type: [String], default: [] },
 
   // Free-text areas for non-ward delivery
