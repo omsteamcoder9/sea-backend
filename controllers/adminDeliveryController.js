@@ -648,10 +648,6 @@ export const downloadTodayOrdersPDF = async (request, reply) => {
         .text(`Order Today • Get Tomorrow (${fmtShort(tomorrow)})`, { align: 'center' });
       doc.moveDown(0.2);
 
-      doc.font('Helvetica-Bold').fontSize(10).fillColor('#cc0000')
-        .text('Cutoff: 8:00 PM for next-day delivery', { align: 'center' });
-      doc.moveDown(0.8);
-
       doc.font('Helvetica').fontSize(9).fillColor('#555')
         .text(`Date: ${fmtLong(now)}`, { align: 'center' });
       doc.moveDown(0.2);
@@ -663,10 +659,11 @@ export const downloadTodayOrdersPDF = async (request, reply) => {
       // ===== Table header =====
       const colX = {
         sn: leftMargin,
-        order: leftMargin + 30,
-        customer: leftMargin + 130,
-        phone: leftMargin + 240,
-        product: leftMargin + 350
+        order: leftMargin + 25,
+        customer: leftMargin + 115,
+        phone: leftMargin + 215,
+        product: leftMargin + 310,
+        weight: leftMargin + 430
       };
       const tableTop = doc.y;
 
@@ -676,6 +673,7 @@ export const downloadTodayOrdersPDF = async (request, reply) => {
       doc.text('Customer', colX.customer, tableTop);
       doc.text('Phone', colX.phone, tableTop);
       doc.text('Product', colX.product, tableTop);
+      doc.text('Weight', colX.weight, tableTop);
 
       doc.moveTo(leftMargin, tableTop + 14)
          .lineTo(pageWidth - rightMargin, tableTop + 14)
@@ -695,12 +693,20 @@ export const downloadTodayOrdersPDF = async (request, reply) => {
 
         const phone = o.shippingAddress?.phone || '';
 
-        // Product names joined by comma
-        const productNames = (o.products || [])
+const productNames = (o.products || [])
+  .map(p => {
+    const variant = p.variantName ? ` (${p.variantName})` : '';
+    const qty = p.quantity ? ` , quantity : ${p.quantity}` : '';
+    return `${p.name || 'Item'}${variant}${qty}`;
+  })
+  .join(', ');
+
+        // Weight per product joined by comma
+        const weightText = (o.products || [])
           .map(p => {
-            const qty = p.quantity ? `${p.quantity}x ` : '';
-            const variant = p.variantName ? ` (${p.variantName})` : '';
-            return `${qty}${p.name || 'Item'}${variant}`;
+            if (!p.weight || p.weight <= 0) return '—';
+            const unit = p.weightUnit === 'gram' ? 'g' : p.weightUnit === 'kg' ? 'kg' : (p.weightUnit || '');
+            return `${p.weight}${unit}`;
           })
           .join(', ');
 
@@ -713,18 +719,20 @@ export const downloadTodayOrdersPDF = async (request, reply) => {
 
         doc.font('Helvetica').fontSize(8).fillColor('#000');
 
-        doc.text(String(i + 1), colX.sn, y, { width: 25 });
-        doc.text(o.orderId || o._id.toString().slice(-8), colX.order, y, { width: 95 });
-        doc.text(customerName, colX.customer, y, { width: 105 });
-        doc.text(phone, colX.phone, y, { width: 105 });
-        doc.text(productNames, colX.product, y, { width: pageWidth - rightMargin - colX.product });
+        doc.text(String(i + 1), colX.sn, y, { width: 20 });
+        doc.text(o.orderId || o._id.toString().slice(-8), colX.order, y, { width: 85 });
+        doc.text(customerName, colX.customer, y, { width: 95 });
+        doc.text(phone, colX.phone, y, { width: 90 });
+        doc.text(productNames, colX.product, y, { width: 115 });
+        doc.text(weightText, colX.weight, y, { width: pageWidth - rightMargin - colX.weight });
 
-        // Compute row height as the tallest text (product usually wraps)
-        const hOrder = doc.heightOfString(o.orderId || '', { width: 95 });
-        const hCustomer = doc.heightOfString(customerName, { width: 105 });
-        const hPhone = doc.heightOfString(phone, { width: 105 });
-        const hProduct = doc.heightOfString(productNames, { width: pageWidth - rightMargin - colX.product });
-        const rowHeight = Math.max(hOrder, hCustomer, hPhone, hProduct, 12);
+        // Compute row height as the tallest text
+        const hOrder = doc.heightOfString(o.orderId || '', { width: 85 });
+        const hCustomer = doc.heightOfString(customerName, { width: 95 });
+        const hPhone = doc.heightOfString(phone, { width: 90 });
+        const hProduct = doc.heightOfString(productNames, { width: 115 });
+        const hWeight = doc.heightOfString(weightText, { width: pageWidth - rightMargin - colX.weight });
+        const rowHeight = Math.max(hOrder, hCustomer, hPhone, hProduct, hWeight, 12);
 
         y += rowHeight + 6;
 

@@ -985,11 +985,7 @@ const addPDFCustomerInfo = (doc, data) => {
     printToLine(data.customer.name, { bold: true, fontSize: 9 });
   }
 
-  if (data.wardName) {
-    printToLine(data.wardName);
-  } else if (data.typedArea) {
-    printToLine(data.typedArea);
-  }
+
 
   if (data.shippingAddress) {
     if (data.shippingAddress.street) printToLine(data.shippingAddress.street);

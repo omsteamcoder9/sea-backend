@@ -128,12 +128,31 @@ export const markPickedUp = async (request, reply) => {
 
     order.deliveryStatus = 'picked_up';
     order.deliveryPickedUpAt = new Date();
+    order.orderStatus = 'shipped';   // ✅ pickup = shipped
     await order.save();
+
+    // Notify customer that order is on the way
+    const customerEmail = order.shippingAddress?.email;
+    const customerName = order.name || order.shippingAddress?.name || 'Customer';
+    const customerPhone = order.shippingAddress?.phone;
+
+    if (customerEmail) {
+      try { await sendOrderStatusUpdateEmail(order, { email: customerEmail, name: customerName }, 'confirmed', 'shipped'); } catch (e) { console.error(e); }
+    }
+    if (customerPhone) {
+      try { await sendOrderStatusSMS(customerPhone, order, 'shipped'); } catch (e) { console.error(e); }
+    }
 
     return reply.status(200).send({
       success: true,
       message: 'Order marked as picked up',
-      order: { _id: order._id, orderId: order.orderId, deliveryStatus: order.deliveryStatus, deliveryPickedUpAt: order.deliveryPickedUpAt }
+      order: {
+        _id: order._id,
+        orderId: order.orderId,
+        deliveryStatus: order.deliveryStatus,
+        deliveryPickedUpAt: order.deliveryPickedUpAt,
+        orderStatus: order.orderStatus   // ✅ return it
+      }
     });
   } catch (error) {
     return reply.status(500).send({ success: false, message: error.message });
