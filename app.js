@@ -3,7 +3,6 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
 import rawBody from 'fastify-raw-body';
-import fastifyStatic from '@fastify/static';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -82,17 +81,14 @@ await fastify.register(multipart, {
   }
 });
 
-// Register static file serving for uploads folder
-await fastify.register(fastifyStatic, {
-  root: path.join(__dirname, 'uploads'),
-  prefix: '/uploads/',
-  decorateReply: false
-});
+// ❌ REMOVED: fastify-static serving of local uploads folder
+// Images are now served directly from Cloudflare R2 public URL
 
 // Decorate middleware globally
 fastify.decorate('requireAdmin', requireAdmin);
 fastify.decorate('uploadImages', uploadImages);
 fastify.decorate('optimizeImages', optimizeImages);
+
 // ADD TEST ROUTE HERE
 fastify.get('/api/test', async (request, reply) => {
   return {
@@ -138,7 +134,7 @@ const start = async () => {
     });
     console.log(`Server running on port ${process.env.PORT || 3000}`);
     console.log(`CORS enabled for origins: ${getAllowedOrigins().join(', ')}`);
-    console.log(`Static files served from: /uploads`);
+    console.log(`✅ Images served from Cloudflare R2`);
     console.log(`Contact routes registered at: /api/contacts`);
     console.log(`Stats routes registered at: /api/stats`);
     console.log(`✅ Delivery boy routes registered at: /api/delivery`);

@@ -5,14 +5,17 @@
   "description": "",
   "main": "app.js",
   "scripts": {
+    "backup": "node scripts/autoBackupChecker.js",
     "start": "node app.js",
     "dev": "nodemon app.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1140.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/jwt": "^10.2.2",
     "@fastify/multipart": "^10.1.1",
     "@fastify/static": "^10.1.4",
+    "adm-zip": "^0.6.1",
     "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.2",
     "fastify": "^5.12.5",

@@ -1,32 +1,9 @@
 import Category from '../models/Category.js';
-import fs from 'fs';
-import path from 'path';
+import { deleteFromR2 } from '../middleware/uploadMiddleware.js';
 
-// Helper function to delete image file
-const deleteImageFile = (imagePath) => {
-  if (!imagePath) return false;
-  try {
-    let filename = '';
-    if (imagePath.includes('/uploads/')) {
-      const parts = imagePath.split('/uploads/');
-      filename = parts[parts.length - 1];
-    } else {
-      filename = path.basename(imagePath);
-    }
-    
-    const uploadsFolder = path.join(process.cwd(), 'uploads');
-    const exactFilePath = path.join(uploadsFolder, filename);
-    
-    if (fs.existsSync(exactFilePath)) {
-      fs.unlinkSync(exactFilePath);
-      console.log(`✅ Deleted category image: ${filename}`);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('❌ Error deleting category image:', error);
-    return false;
-  }
+// Helper: delete image from R2 (accepts full URL, /uploads/... path, or key)
+const deleteImageFile = async (imagePath) => {
+  return await deleteFromR2(imagePath);
 };
 
 // Create a new category (with image upload)
@@ -34,7 +11,9 @@ export const createCategory = async (request, reply) => {
   try {
     const { name } = request.body;
     const files = request.uploadedFiles || [];
-    
+
+    console.log('🔍 Category create — file fieldnames:', files.map(f => f.fieldname));
+
     if (!name) {
       return reply.status(400).send({
         success: false,
@@ -42,7 +21,6 @@ export const createCategory = async (request, reply) => {
       });
     }
 
-    // Check if category already exists
     const existingCategory = await Category.findOne({ name });
     if (existingCategory) {
       return reply.status(400).send({
@@ -51,13 +29,13 @@ export const createCategory = async (request, reply) => {
       });
     }
 
-    // Get uploaded image
+    // 🎯 Store only the R2 key
     const imageFile = files.find(file => file.fieldname === 'image');
-    const imagePath = imageFile ? `/uploads/${imageFile.filename}` : null;
+    const imageKey = imageFile ? imageFile.key : null;
 
-    const category = await Category.create({ 
-      name, 
-      image: imagePath 
+    const category = await Category.create({
+      name,
+      image: imageKey
     });
 
     return reply.status(201).send({
@@ -128,6 +106,8 @@ export const updateCategory = async (request, reply) => {
     const { name } = request.body;
     const files = request.uploadedFiles || [];
 
+    console.log('🔍 Category update — file fieldnames:', files.map(f => f.fieldname));
+
     if (!name) {
       return reply.status(400).send({
         success: false,
@@ -135,7 +115,6 @@ export const updateCategory = async (request, reply) => {
       });
     }
 
-    // Check if category exists
     const category = await Category.findById(id);
     if (!category) {
       return reply.status(404).send({
@@ -144,10 +123,9 @@ export const updateCategory = async (request, reply) => {
       });
     }
 
-    // Check if new name already exists (excluding current category)
-    const existingCategory = await Category.findOne({ 
-      name, 
-      _id: { $ne: id } 
+    const existingCategory = await Category.findOne({
+      name,
+      _id: { $ne: id }
     });
 
     if (existingCategory) {
@@ -157,27 +135,25 @@ export const updateCategory = async (request, reply) => {
       });
     }
 
-    // Handle image deletion if new image is uploaded or image is being removed
     const imageFile = files.find(file => file.fieldname === 'image');
     const { deleteImage } = request.body;
 
-    // If deleteImage is true, remove existing image
+    // If deleteImage is true, remove existing image from R2
     if (deleteImage === 'true' || deleteImage === true) {
       if (category.image) {
-        deleteImageFile(category.image);
+        await deleteImageFile(category.image);
         category.image = null;
       }
     }
 
-    // If new image is uploaded, delete old one and set new one
+    // If new image uploaded, delete old one from R2 and set new KEY
     if (imageFile) {
       if (category.image) {
-        deleteImageFile(category.image);
+        await deleteImageFile(category.image);
       }
-      category.image = `/uploads/${imageFile.filename}`;
+      category.image = imageFile.key;
     }
 
-    // Update name
     category.name = name;
 
     await category.save();
@@ -210,9 +186,8 @@ export const deleteCategory = async (request, reply) => {
       });
     }
 
-    // Delete associated image file if exists
     if (category.image) {
-      deleteImageFile(category.image);
+      await deleteImageFile(category.image);
     }
 
     await Category.findByIdAndDelete(id);

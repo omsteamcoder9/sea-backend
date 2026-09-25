@@ -22,6 +22,12 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// 🎯 Tamil font paths
+const TAMIL_FONT_PATH = path.join(__dirname, '../assets/fonts/NotoSansTamil.ttf');
+const TAMIL_FONT_BOLD_PATH = fs.existsSync(path.join(__dirname, '../assets/fonts/NotoSansTamil-Bold.ttf'))
+  ? path.join(__dirname, '../assets/fonts/NotoSansTamil-Bold.ttf')
+  : TAMIL_FONT_PATH;
+
 // ============================================================
 // ✅ NORMALIZER
 // ============================================================
@@ -222,6 +228,9 @@ const findWardByTypedArea = (typedArea, cityContext) => {
   return null;
 };
 
+// ============================================================
+// 🎯 Geocode with pincode validation
+// ============================================================
 const geocodeAddress = async (address) => {
   const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
   if (!GOOGLE_MAPS_API_KEY) return null;
@@ -233,15 +242,53 @@ const geocodeAddress = async (address) => {
     const data = await response.json();
 
     if (data.status === 'OK' && data.results && data.results.length > 0) {
-      const location = data.results[0].geometry.location;
+      const result = data.results[0];
+      const location = result.geometry.location;
+
+      // 🎯 Validate: if user provided a pincode, the returned pincode must match
+      if (address.postalCode) {
+        const returnedPincode = result.address_components?.find(
+          c => c.types?.includes('postal_code')
+        )?.long_name;
+
+        if (returnedPincode && returnedPincode !== address.postalCode) {
+          console.warn(
+            `⚠️ Pincode mismatch: user said ${address.postalCode}, Google returned ${returnedPincode} — rejecting this result`
+          );
+          return null;
+        }
+      }
+
       console.log(`📍 Geocoded: (${location.lat}, ${location.lng})`);
       return { lat: location.lat, lng: location.lng };
     }
+
     return null;
   } catch (error) {
     console.error('Geocoding error:', error.message);
     return null;
   }
+};
+
+// 🎯 Geocode with pincode-only fallback
+const geocodeWithFallback = async (shippingAddress) => {
+  // 1. Try full address first
+  let coords = await geocodeAddress(shippingAddress);
+  if (coords) return coords;
+
+  // 2. Fall back to pincode only
+  if (shippingAddress?.postalCode) {
+    console.log(`🔁 Retrying geocode with pincode only: ${shippingAddress.postalCode}`);
+    coords = await geocodeAddress({
+      street: '',
+      city: shippingAddress.city || '',
+      state: shippingAddress.state || '',
+      postalCode: shippingAddress.postalCode
+    });
+    if (coords) return coords;
+  }
+
+  return null;
 };
 
 const matchWard = async (shippingAddress, typedArea) => {
@@ -517,6 +564,20 @@ export const createOrder = async (request, reply) => {
       console.log(`🌍 No ward assigned`);
     }
 
+    // 🎯 Geocode the shipping address to get lat/lng (with pincode validation)
+    let coordinates = null;
+    try {
+      coordinates = await geocodeWithFallback(shippingAddress);
+    } catch (err) {
+      console.error('❌ Geocoding failed:', err.message);
+    }
+
+    if (coordinates) {
+      console.log(`📍 Saved coordinates: (${coordinates.lat}, ${coordinates.lng})`);
+    } else {
+      console.log(`⚠️ No coordinates — will fall back to text address on driver app`);
+    }
+
     const customerName = shippingAddress.name || 'Customer';
 
     const order = await Order.create({
@@ -525,7 +586,9 @@ export const createOrder = async (request, reply) => {
       products,
       shippingAddress: {
         ...shippingAddress,
-        name: shippingAddress.name || ''
+        name: shippingAddress.name || '',
+        latitude: coordinates?.lat ?? null,
+        longitude: coordinates?.lng ?? null
       },
       wardId: wardInfo.wardId,
       wardName: wardInfo.wardName,
@@ -543,8 +606,6 @@ export const createOrder = async (request, reply) => {
     });
 
     console.log(`✅ Order created: ${order.orderId}`);
-
-    // ❌ AUTO-ASSIGN REMOVED — admin assigns manually
 
     if (paymentMethod === 'cod') {
       await updateProductStock(products);
@@ -850,10 +911,17 @@ export const printOrderReceiptPDF = async (request, reply) => {
     const { id } = request.params;
     const userId = request.user.userId || request.user.id;
     const isAdmin = request.user.role === 'admin';
-    const order = await Order.findById(id).populate('user', 'name').populate('products.product', 'name price image');
+
+    const order = await Order.findById(id)
+      .populate('user', 'name')
+      .populate('products.product', 'name price image');
+
     if (!order) return reply.status(404).send({ success: false, message: 'Order not found' });
+
     const isOrderOwner = order.user && order.user._id.toString() === userId;
-    if (!isOrderOwner && !isAdmin) return reply.status(403).send({ success: false, message: 'Not authorized' });
+    if (!isOrderOwner && !isAdmin) {
+      return reply.status(403).send({ success: false, message: 'Not authorized' });
+    }
 
     const storeSettings = await getStoreSettings();
 
@@ -867,57 +935,93 @@ export const printOrderReceiptPDF = async (request, reply) => {
       receiptNumber: order._id.toString(),
       orderNumber: order.orderId || order._id.toString(),
       date: order.createdAt,
-      store: { name: storeSettings.siteName, email: storeSettings.contactEmail, phone: storeSettings.contactNumber, address: storeSettings.companyAddress },
+      store: {
+        name: storeSettings.siteName,
+        email: storeSettings.contactEmail,
+        phone: storeSettings.contactNumber,
+        address: storeSettings.companyAddress
+      },
       customer: { name: customerName },
       wardName: order.wardName || null,
       typedArea: order.typedArea || null,
       shippingAddress: order.shippingAddress,
       items: order.products.map(item => ({
-        name: item.name, quantity: item.quantity, price: item.price,
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
         total: (item.quantity * item.price).toFixed(2),
         variantName: item.variantName,
-        weight: item.weight || 0, weightUnit: item.weightUnit || 'gram'
+        weight: item.weight || 0,
+        weightUnit: item.weightUnit || 'gram'
       })),
-      pricing: { subtotal: order.totalAmount || 0, tax: order.taxAmount || 0, shipping: order.shippingFee || 0, total: order.finalAmount || 0 },
+      pricing: {
+        subtotal: order.totalAmount || 0,
+        tax: order.taxAmount || 0,
+        shipping: order.shippingFee || 0,
+        total: order.finalAmount || 0
+      },
       payment: { method: order.paymentMethod, status: order.paymentStatus }
     };
 
+    const pdfBuffer = await generateReceiptPDFBuffer(receiptData);
+
+    if (!Buffer.isBuffer(pdfBuffer)) {
+      console.error('❌ PDF generation did not return a Buffer. Got:', typeof pdfBuffer);
+      return reply.status(500).send({ success: false, message: 'PDF generation failed' });
+    }
+
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `attachment; filename="receipt-${order.orderId}.pdf"`);
-    const pdfBuffer = await generateReceiptPDFBuffer(receiptData);
     return reply.status(200).send(pdfBuffer);
+
   } catch (error) {
-    return reply.status(500).send({ success: false, message: error.message });
+    console.error('❌ printOrderReceiptPDF error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: error.message || 'PDF generation failed'
+    });
   }
 };
 
 // ============================================================
-// PDF helpers (unchanged)
+// PDF helpers (WITH TAMIL FONT SUPPORT)
 // ============================================================
 const generateReceiptPDFBuffer = async (receiptData) => {
-  return new Promise(async (resolve, reject) => {
+  const PDFDocument = (await import('pdfkit')).default;
+
+  return new Promise((resolve, reject) => {
     try {
-      const PDFDocument = await import('pdfkit').then(m => m.default);
       const doc = new PDFDocument({ margin: 50 });
+
+      doc.registerFont('Tamil', TAMIL_FONT_PATH);
+      doc.registerFont('Tamil-Bold', TAMIL_FONT_BOLD_PATH);
+
       const buffers = [];
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', (err) => {
+        console.error('❌ PDFKit stream error:', err);
+        reject(err);
+      });
+
       addPDFHeader(doc, receiptData);
       addPDFCustomerInfo(doc, receiptData);
       addPDFItemsTable(doc, receiptData);
       addPDFTotals(doc, receiptData);
       addPDFFooter(doc);
+
       doc.end();
-    } catch (error) {
-      reject(error);
+    } catch (err) {
+      console.error('❌ generateReceiptPDFBuffer error:', err);
+      reject(err);
     }
   });
 };
 
 const addPDFHeader = (doc, data) => {
-  doc.fontSize(20).font('Helvetica-Bold').fillColor('#1a237e')
-     .text(data.store.name, { align: 'center' }).moveDown(0.5);
-  doc.fontSize(10).font('Helvetica').fillColor('#666')
+  doc.fontSize(20).font('Tamil-Bold').fillColor('#1a237e')
+     .text(data.store.name || 'Store', { align: 'center' }).moveDown(0.5);
+  doc.fontSize(10).font('Tamil').fillColor('#666')
      .text('Order Receipt', { align: 'center' }).moveDown(1);
 };
 
@@ -933,9 +1037,9 @@ const addPDFCustomerInfo = (doc, data) => {
   const toColumnX = 415;
   const toWidth = pageWidth - rightMargin - toColumnX;
 
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text('FROM:', startX, startY);
+  doc.font('Tamil-Bold').fontSize(10).fillColor('#000000').text('FROM:', startX, startY);
   let fromY = startY + 18;
-  doc.font('Helvetica').fontSize(9).fillColor('#333333');
+  doc.font('Tamil').fontSize(9).fillColor('#333333');
 
   const fromLines = [
     data.store?.name,
@@ -950,7 +1054,7 @@ const addPDFCustomerInfo = (doc, data) => {
     fromY += lineHeight + 4;
   }
 
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text('ORDER RECEIPT', orderColumnX, startY, { width: orderWidth });
+  doc.font('Tamil-Bold').fontSize(10).fillColor('#000000').text('ORDER RECEIPT', orderColumnX, startY, { width: orderWidth });
   let orderY = startY + 18;
 
   const orderDetails = [
@@ -960,22 +1064,22 @@ const addPDFCustomerInfo = (doc, data) => {
     data.payment?.status ? `Status: ${String(data.payment.status).toUpperCase()}` : null,
   ].filter(Boolean);
 
-  doc.font('Helvetica').fontSize(9).fillColor('#333333');
+  doc.font('Tamil').fontSize(9).fillColor('#333333');
   for (const line of orderDetails) {
     doc.text(line, orderColumnX, orderY, { width: orderWidth, lineGap: 2 });
     const lineHeight = doc.heightOfString(line, { width: orderWidth, lineGap: 2 });
     orderY += lineHeight + 5;
   }
 
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#000000').text('TO:', toColumnX, startY, { width: toWidth });
+  doc.font('Tamil-Bold').fontSize(10).fillColor('#000000').text('TO:', toColumnX, startY, { width: toWidth });
   let toY = startY + 18;
-  doc.font('Helvetica').fontSize(9).fillColor('#333333');
+  doc.font('Tamil').fontSize(9).fillColor('#333333');
 
   const printToLine = (text, options = {}) => {
     if (!text) return;
     const fontSize = options.fontSize || 9;
     const bold = options.bold || false;
-    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+    doc.font(bold ? 'Tamil-Bold' : 'Tamil').fontSize(fontSize);
     doc.text(text, toColumnX, toY, { width: toWidth, lineGap: 2, align: 'left' });
     const lineHeight = doc.heightOfString(text, { width: toWidth, lineGap: 2 });
     toY += lineHeight + 4;
@@ -984,8 +1088,6 @@ const addPDFCustomerInfo = (doc, data) => {
   if (data.customer?.name) {
     printToLine(data.customer.name, { bold: true, fontSize: 9 });
   }
-
-
 
   if (data.shippingAddress) {
     if (data.shippingAddress.street) printToLine(data.shippingAddress.street);
@@ -1003,7 +1105,7 @@ const addPDFCustomerInfo = (doc, data) => {
 
 const addPDFItemsTable = (doc, data) => {
   const tableTop = doc.y + 10;
-  doc.font('Helvetica-Bold').fontSize(9)
+  doc.font('Tamil-Bold').fontSize(9)
      .text('PRODUCT', 50, tableTop)
      .text('QTY', 200, tableTop)
      .text('WEIGHT', 260, tableTop)
@@ -1017,7 +1119,7 @@ const addPDFItemsTable = (doc, data) => {
     const weightDisplay = item.weight && item.weight > 0
       ? `${item.weight}${item.weightUnit === 'gram' ? 'g' : item.weightUnit === 'kg' ? 'kg' : item.weightUnit}`
       : '-';
-    doc.font('Helvetica').fontSize(8)
+    doc.font('Tamil').fontSize(8)
        .text(item.name, 50, yPosition, { width: 140 })
        .text(item.quantity.toString(), 200, yPosition)
        .text(weightDisplay, 260, yPosition)
@@ -1031,12 +1133,12 @@ const addPDFItemsTable = (doc, data) => {
 
 const addPDFTotals = (doc, data) => {
   const totalsTop = doc.y + 10;
-  doc.font('Helvetica').fontSize(9)
+  doc.font('Tamil').fontSize(9)
      .text(`Subtotal: ${data.pricing.subtotal.toFixed(2)}`, 400, totalsTop)
      .text(`Tax: ${data.pricing.tax.toFixed(2)}`, 400, totalsTop + 14)
      .text(`Shipping: ${data.pricing.shipping.toFixed(2)}`, 400, totalsTop + 28);
   doc.moveTo(400, totalsTop + 42).lineTo(520, totalsTop + 42).stroke();
-  doc.font('Helvetica-Bold').fontSize(10)
+  doc.font('Tamil-Bold').fontSize(10)
      .text(`TOTAL: ${data.pricing.total.toFixed(2)}`, 400, totalsTop + 50);
   doc.y = totalsTop + 65;
 };

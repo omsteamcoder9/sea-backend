@@ -8,6 +8,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// 🎯 Tamil font paths
+const TAMIL_FONT_PATH = path.join(__dirname, '../assets/fonts/NotoSansTamil.ttf');
+const TAMIL_FONT_BOLD_PATH = fs.existsSync(path.join(__dirname, '../assets/fonts/NotoSansTamil-Bold.ttf'))
+  ? path.join(__dirname, '../assets/fonts/NotoSansTamil-Bold.ttf')
+  : TAMIL_FONT_PATH;
+
 // ============================================================
 // ✅ NORMALIZER
 // ============================================================
@@ -45,8 +51,8 @@ const loadCityWards = (cityKey, filePath) => {
 loadCityWards('karaikudi', path.join(__dirname, '../data/Karaikudi_Wards.json'));
 loadCityWards('pudukkottai', path.join(__dirname, '../data/Pudukkottai_Wards.json'));
 
-// Flatten ward lookup by ID across cities (wardId might not be unique across cities)
-const wardsById = new Map(); // wardId → [ward, ward, ...]
+// Flatten ward lookup by ID across cities
+const wardsById = new Map();
 for (const [_, ctx] of citiesWards.entries()) {
   for (const w of ctx.wards) {
     const key = String(w.wardId);
@@ -55,7 +61,6 @@ for (const [_, ctx] of citiesWards.entries()) {
   }
 }
 
-// Get all wards across all cities (for getWardsList)
 const getAllWards = () => {
   const out = [];
   for (const [_, ctx] of citiesWards.entries()) {
@@ -64,9 +69,6 @@ const getAllWards = () => {
   return out;
 };
 
-// ============================================================
-// Helper: Get ward names from ward IDs (city-aware)
-// ============================================================
 const getWardNames = (wardIds, city) => {
   if (!wardIds || !wardIds.length) return [];
 
@@ -78,13 +80,11 @@ const getWardNames = (wardIds, city) => {
       const w = ctx.wards.find(x => String(x.wardId) === String(id));
       if (w) return w.wardName;
     }
-    // fallback: any city (ambiguous) — only used if city not provided
     const arr = wardsById.get(String(id));
     return arr && arr.length > 0 ? arr[0].wardName : `Ward ${id}`;
   });
 };
 
-// Helper: Normalize areas array
 const normalizeAreas = (areas) => {
   if (!Array.isArray(areas)) return [];
   const cleaned = areas
@@ -94,7 +94,7 @@ const normalizeAreas = (areas) => {
 };
 
 // ============================================================
-// Auto-assign unassigned orders to a delivery boy
+// Auto-assign unassigned orders
 // ============================================================
 const autoAssignOrdersToDeliveryBoy = async (deliveryBoy) => {
   try {
@@ -123,7 +123,6 @@ const autoAssignOrdersToDeliveryBoy = async (deliveryBoy) => {
       const orderCity = (order.shippingAddress?.city || '').trim().toLowerCase();
       const cityMatches = !boyCity || !orderCity || orderCity.includes(boyCity);
 
-      // ✅ only match wardId when city matches too
       if (!matches && cityMatches && order.wardId && wardIds.includes(String(order.wardId))) matches = true;
 
       if (!matches && cityMatches && order.typedArea && wardNames.length > 0) {
@@ -199,14 +198,12 @@ export const addDeliveryBoy = async (request, reply) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // wardIds can be numbers OR strings ("4A"); preserve as-is
     const normalizedWardIds = hasWards
       ? wardIds.map(id => (typeof id === 'string' && isNaN(Number(id))) ? id : parseInt(id))
       : [];
 
     const normalizedCity = hasWards ? city.trim().toLowerCase() : '';
 
-    // ✅ Pass city so lookup uses the correct ward file
     const wardNames = getWardNames(normalizedWardIds, normalizedCity);
     const normalizedAreas = normalizeAreas(areas);
 
@@ -262,7 +259,6 @@ export const updateDeliveryBoy = async (request, reply) => {
     if (email) deliveryBoy.email = email;
     if (phone) deliveryBoy.phone = phone;
 
-    // Update city first (so wardNames use the correct city)
     if (city !== undefined) deliveryBoy.city = (city || '').trim().toLowerCase();
 
     if (wardIds !== undefined) {
@@ -270,7 +266,6 @@ export const updateDeliveryBoy = async (request, reply) => {
         ? wardIds.map(v => (typeof v === 'string' && isNaN(Number(v))) ? v : parseInt(v))
         : [];
       deliveryBoy.wardIds = normalizedWardIds;
-      // ✅ pass current city
       deliveryBoy.wardNames = getWardNames(normalizedWardIds, deliveryBoy.city);
     }
 
@@ -342,7 +337,7 @@ export const getWardsList = async (request, reply) => {
           wardId: w.wardId,
           wardName: w.wardName,
           streets: w.streets,
-          city: cityKey   // ✅ THIS is what makes the UI split
+          city: cityKey
         });
       }
     }
@@ -424,9 +419,9 @@ export const getDeliveryBoyStats = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
+
 // ============================================================
 // ✅ ADMIN: Edit order address / ward / city / typedArea
-// + Auto-reassign delivery boy based on new ward
 // ============================================================
 export const editOrderAddress = async (request, reply) => {
   try {
@@ -449,14 +444,12 @@ export const editOrderAddress = async (request, reply) => {
 
     const previousWardId = order.wardId;
 
-    // ---------- customer name ----------
     if (name !== undefined) {
       order.name = name || '';
       if (!order.shippingAddress) order.shippingAddress = {};
       order.shippingAddress.name = name || '';
     }
 
-    // ---------- shipping address fields ----------
     if (!order.shippingAddress) order.shippingAddress = {};
 
     if (phone !== undefined) order.shippingAddress.phone = phone || '';
@@ -466,17 +459,14 @@ export const editOrderAddress = async (request, reply) => {
     if (country !== undefined) order.shippingAddress.country = country || '';
     if (email !== undefined) order.shippingAddress.email = email || '';
 
-    // ---------- city ----------
     if (city !== undefined) {
       order.shippingAddress.city = (city || '').trim();
     }
 
-    // ---------- typed area ----------
     if (typedArea !== undefined) {
       order.typedArea = (typedArea || '').trim();
     }
 
-    // ---------- ward (wardId + wardName) ----------
     if (wardId !== undefined) {
       const incoming = (wardId === '' || wardId === null) ? null : wardId;
 
@@ -510,9 +500,6 @@ export const editOrderAddress = async (request, reply) => {
       order.deliveryZone = 'standard';
     }
 
-    // ============================================================
-    // ✅ AUTO-REASSIGN delivery boy when ward changed
-    // ============================================================
     const wardChanged = previousWardId !== order.wardId;
 
     let reassignedTo = null;
@@ -523,13 +510,11 @@ export const editOrderAddress = async (request, reply) => {
 
       const normalizedCity = (order.shippingAddress?.city || '').trim().toLowerCase();
 
-      // Find an active delivery boy whose wardIds contains this ward
       const candidates = await DeliveryBoy.find({
         status: 'active',
         wardIds: { $in: [order.wardId] }
       });
 
-      // Prefer a boy whose city matches the order's city
       let matchedBoy = null;
       if (normalizedCity) {
         matchedBoy = candidates.find(boy => {
@@ -537,13 +522,11 @@ export const editOrderAddress = async (request, reply) => {
           return boyCity && boyCity === normalizedCity;
         });
       }
-      // fallback: any active boy with that ward
       if (!matchedBoy && candidates.length > 0) {
         matchedBoy = candidates[0];
       }
 
       if (matchedBoy) {
-        // Only reassign if it's actually a different boy
         if (!oldBoyId || String(oldBoyId) !== String(matchedBoy._id)) {
           order.deliveryBoy = matchedBoy._id;
           order.deliveryStatus = 'assigned';
@@ -553,7 +536,6 @@ export const editOrderAddress = async (request, reply) => {
           reassignedTo = matchedBoy;
         }
       } else {
-        // No boy handles the new ward → unassign so it doesn't sit with the wrong boy
         order.deliveryBoy = null;
         order.deliveryStatus = 'unassigned';
         order.deliveryAssignedAt = null;
@@ -600,33 +582,35 @@ export const editOrderAddress = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
+
 // ============================================================
-// ✅ ADMIN: Download today's orders PDF (simple list)
+// ✅ ADMIN: Download today's orders PDF (WITH TAMIL FONT)
 // ============================================================
 export const downloadTodayOrdersPDF = async (request, reply) => {
   try {
     const PDFDocument = (await import('pdfkit')).default;
 
-    // ---------- Today's range (server local time) ----------
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-    // Tomorrow (for the header line)
     const tomorrow = new Date(startOfDay);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const fmtLong = (d) => d.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const fmtShort = (d) => d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
 
-    // ---------- Fetch today's orders ----------
     const orders = await Order.find({
       createdAt: { $gte: startOfDay, $lte: endOfDay },
       orderStatus: { $ne: 'cancelled' }
     }).sort({ createdAt: 1 });
 
-    // ---------- Build PDF ----------
     const doc = new PDFDocument({ margin: 40, size: 'A4' });
+
+    // 🎯 Register Tamil font
+    doc.registerFont('Tamil', TAMIL_FONT_PATH);
+    doc.registerFont('Tamil-Bold', TAMIL_FONT_BOLD_PATH);
+
     const buffers = [];
     doc.on('data', buffers.push.bind(buffers));
 
@@ -640,19 +624,19 @@ export const downloadTodayOrdersPDF = async (request, reply) => {
       const contentWidth = pageWidth - leftMargin - rightMargin;
 
       // ===== Header =====
-      doc.font('Helvetica-Bold').fontSize(20).fillColor('#1a237e')
+      doc.font('Tamil-Bold').fontSize(20).fillColor('#1a237e')
         .text("TODAY'S ORDERS", { align: 'center' });
       doc.moveDown(0.3);
 
-      doc.font('Helvetica').fontSize(10).fillColor('#333')
+      doc.font('Tamil').fontSize(10).fillColor('#333')
         .text(`Order Today • Get Tomorrow (${fmtShort(tomorrow)})`, { align: 'center' });
       doc.moveDown(0.2);
 
-      doc.font('Helvetica').fontSize(9).fillColor('#555')
+      doc.font('Tamil').fontSize(9).fillColor('#555')
         .text(`Date: ${fmtLong(now)}`, { align: 'center' });
       doc.moveDown(0.2);
 
-      doc.font('Helvetica-Bold').fontSize(10).fillColor('#000')
+      doc.font('Tamil-Bold').fontSize(10).fillColor('#000')
         .text(`Total Orders: ${orders.length}`, { align: 'center' });
       doc.moveDown(1);
 
@@ -667,7 +651,7 @@ export const downloadTodayOrdersPDF = async (request, reply) => {
       };
       const tableTop = doc.y;
 
-      doc.font('Helvetica-Bold').fontSize(9).fillColor('#000');
+      doc.font('Tamil-Bold').fontSize(9).fillColor('#000');
       doc.text('#', colX.sn, tableTop);
       doc.text('Order ID', colX.order, tableTop);
       doc.text('Customer', colX.customer, tableTop);
@@ -695,13 +679,11 @@ export const downloadTodayOrdersPDF = async (request, reply) => {
 
 const productNames = (o.products || [])
   .map(p => {
-    const variant = p.variantName ? ` (${p.variantName})` : '';
     const qty = p.quantity ? ` , quantity : ${p.quantity}` : '';
-    return `${p.name || 'Item'}${variant}${qty}`;
+    return `${p.name || 'Item'}${qty}`;
   })
   .join(', ');
 
-        // Weight per product joined by comma
         const weightText = (o.products || [])
           .map(p => {
             if (!p.weight || p.weight <= 0) return '—';
@@ -710,14 +692,15 @@ const productNames = (o.products || [])
           })
           .join(', ');
 
-        // Page break check
         const bottomLimit = doc.page.height - doc.page.margins.bottom - 40;
         if (y > bottomLimit) {
           doc.addPage();
+          doc.registerFont('Tamil', TAMIL_FONT_PATH);
+          doc.registerFont('Tamil-Bold', TAMIL_FONT_BOLD_PATH);
           y = doc.page.margins.top;
         }
 
-        doc.font('Helvetica').fontSize(8).fillColor('#000');
+        doc.font('Tamil').fontSize(8).fillColor('#000');
 
         doc.text(String(i + 1), colX.sn, y, { width: 20 });
         doc.text(o.orderId || o._id.toString().slice(-8), colX.order, y, { width: 85 });
@@ -726,7 +709,6 @@ const productNames = (o.products || [])
         doc.text(productNames, colX.product, y, { width: 115 });
         doc.text(weightText, colX.weight, y, { width: pageWidth - rightMargin - colX.weight });
 
-        // Compute row height as the tallest text
         const hOrder = doc.heightOfString(o.orderId || '', { width: 85 });
         const hCustomer = doc.heightOfString(customerName, { width: 95 });
         const hPhone = doc.heightOfString(phone, { width: 90 });
@@ -736,7 +718,6 @@ const productNames = (o.products || [])
 
         y += rowHeight + 6;
 
-        // Light divider
         doc.moveTo(leftMargin, y - 3)
            .lineTo(pageWidth - rightMargin, y - 3)
            .strokeColor('#eee').stroke();
@@ -764,6 +745,7 @@ const productNames = (o.products || [])
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
+
 export const getDeliveryBoyOrders = async (request, reply) => {
   try {
     const { id } = request.params;

@@ -1,6 +1,18 @@
 // models/productModel.js
 import mongoose from 'mongoose';
-import slugify from 'slugify';
+
+// 🎯 Tamil-safe slugify — keeps Unicode letters, numbers, marks (virama), dashes
+const tamilSafeSlugify = (text) => {
+    return text
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^\p{L}\p{N}\p{M}\-]+/gu, '')
+        .replace(/-+/g, '-')
+        .replace(/^-+/, '')
+        .replace(/-+$/, '');
+};
 
 const productSchema = new mongoose.Schema({
     // Auto Increment Serial No
@@ -68,35 +80,38 @@ const productSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// Combined pre-save middleware (NO next parameter)
+// Combined pre-save middleware
 productSchema.pre('save', async function() {
-    // Generate main product slug if name is modified or new
-    if (this.isModified('name')) {
-        const baseSlug = slugify(this.name, { lower: true, strict: true });
+    // 🎯 Only generate slug if MISSING — never overwrite an existing one
+    if (!this.slug || this.slug.trim() === '') {
+        let baseSlug = tamilSafeSlugify(this.name);
+        if (!baseSlug || baseSlug.trim() === '') {
+            baseSlug = `product-${Date.now()}`;
+        }
+
         let slug = baseSlug;
         let counter = 1;
-        let slugExists = true;
-        
-        while (slugExists) {
-            const existingProduct = await this.constructor.findOne({ slug });
-            if (!existingProduct || existingProduct._id.equals(this._id)) {
-                slugExists = false;
-            } else {
-                slug = `${baseSlug}-${counter}`;
-                counter++;
-            }
+        while (await this.constructor.findOne({ slug, _id: { $ne: this._id } })) {
+            slug = `${baseSlug}-${counter}`;
+            counter++;
         }
         this.slug = slug;
+    } else {
+        // Uniquify the provided slug if it collides with another product
+        let finalSlug = this.slug;
+        let counter = 1;
+        while (await this.constructor.findOne({ slug: finalSlug, _id: { $ne: this._id } })) {
+            finalSlug = `${this.slug}-${counter}`;
+            counter++;
+        }
+        this.slug = finalSlug;
     }
 
-    // Generate variant slugs
+    // 🎯 Generate variant slugs (Tamil-safe)
     if (this.variants && this.variants.length > 0) {
         this.variants.forEach((variant, index) => {
             if (!variant.variantSlug) {
-                const variantSlug = slugify(`${this.name} ${variant.variantName}`, { 
-                    lower: true, 
-                    strict: true 
-                });
+                const variantSlug = tamilSafeSlugify(`${this.name} ${variant.variantName}`);
                 variant.variantSlug = `${variantSlug}-${index + 1}`;
             }
         });
