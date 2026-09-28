@@ -34,11 +34,25 @@ const orderSchema = new mongoose.Schema({
     postalCode: { type: String, required: true },
     country: { type: String, required: true },
     phone: { type: String, required: true },
+    alternatePhone: { type: String, default: '' },   // ✅ NEW — optional
     email: { type: String, required: false, default: '' },
 
-    // 🎯 NEW — Coordinates from Google Geocoding API
+    // 🎯 Coordinates from Google Geocoding API or customer pin
     latitude: { type: Number, default: null },
-    longitude: { type: Number, default: null }
+    longitude: { type: Number, default: null },
+
+    // ✅ Where did these coords come from?
+    // "customer_selected" → user dropped pin → TRUST 100%
+    // "google_geocoded"   → backend guessed → DON'T TRUST
+    // "none"              → no coords at all → fall back to text
+    locationSource: {
+      type: String,
+      enum: ['customer_selected', 'google_geocoded', 'none'],
+      default: 'none'
+    },
+
+    // ✅ Landmark hint for driver ("Near Anjaneyar Kovil")
+    landmark: { type: String, default: '' }
   },
 
   // Ward Info

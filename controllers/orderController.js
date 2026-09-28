@@ -414,7 +414,11 @@ export const createOrder = async (request, reply) => {
       paymentId,
       skipCartClear,
       products: bodyProducts,
-      typedArea
+      typedArea,
+      customerPin,        // ✅ NEW — { lat, lng } from frontend pin drop
+      landmark ,
+            alternatePhone      // ✅ NEW — optional alternate number
+           // ✅ NEW — "Near Anjaneyar Kovil"
     } = request.body;
 
     if (!shippingAddress || !paymentMethod) {
@@ -564,18 +568,34 @@ export const createOrder = async (request, reply) => {
       console.log(`🌍 No ward assigned`);
     }
 
-    // 🎯 Geocode the shipping address to get lat/lng (with pincode validation)
+    // 🎯 Decide coordinates — TRUST customer pin first, fall back to geocoding
     let coordinates = null;
-    try {
-      coordinates = await geocodeWithFallback(shippingAddress);
-    } catch (err) {
-      console.error('❌ Geocoding failed:', err.message);
-    }
+    let locationSource = 'none';
 
-    if (coordinates) {
-      console.log(`📍 Saved coordinates: (${coordinates.lat}, ${coordinates.lng})`);
+    if (
+      customerPin &&
+      typeof customerPin.lat === 'number' &&
+      typeof customerPin.lng === 'number' &&
+      !isNaN(customerPin.lat) &&
+      !isNaN(customerPin.lng)
+    ) {
+      // ✅ Customer dropped a pin → 100% exact
+      coordinates = { lat: customerPin.lat, lng: customerPin.lng };
+      locationSource = 'customer_selected';
+      console.log(`📍 Customer pin (EXACT): (${coordinates.lat}, ${coordinates.lng})`);
     } else {
-      console.log(`⚠️ No coordinates — will fall back to text address on driver app`);
+      // ⚠️ No pin → backend geocodes → approximate
+      try {
+        coordinates = await geocodeWithFallback(shippingAddress);
+        if (coordinates) {
+          locationSource = 'google_geocoded';
+          console.log(`📍 Geocoded (approximate): (${coordinates.lat}, ${coordinates.lng})`);
+        } else {
+          console.log(`⚠️ No coordinates — driver will use text address`);
+        }
+      } catch (err) {
+        console.error('❌ Geocoding failed:', err.message);
+      }
     }
 
     const customerName = shippingAddress.name || 'Customer';
@@ -586,9 +606,13 @@ export const createOrder = async (request, reply) => {
       products,
       shippingAddress: {
         ...shippingAddress,
+                alternatePhone: (alternatePhone || shippingAddress.alternatePhone || '').trim().slice(0, 20),   // ✅ NEW
+
         name: shippingAddress.name || '',
         latitude: coordinates?.lat ?? null,
-        longitude: coordinates?.lng ?? null
+        longitude: coordinates?.lng ?? null,
+        locationSource: locationSource,
+        landmark: (landmark || '').trim().slice(0, 200)
       },
       wardId: wardInfo.wardId,
       wardName: wardInfo.wardName,
@@ -606,6 +630,8 @@ export const createOrder = async (request, reply) => {
     });
 
     console.log(`✅ Order created: ${order.orderId}`);
+    console.log(`   locationSource: ${order.shippingAddress.locationSource}`);
+    console.log(`   landmark: "${order.shippingAddress.landmark}"`);
 
     if (paymentMethod === 'cod') {
       await updateProductStock(products);

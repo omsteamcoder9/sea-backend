@@ -23,10 +23,13 @@ import statsRoutes from './routes/statsRoutes.js';
 import adminUserRoutes from './routes/adminUserRoutes.js';
 import wardRoutes from './routes/wardRoutes.js';
 
-
 // ✅ ADD THESE IMPORTS FOR DELIVERY BOY
 import deliveryRoutes from './routes/deliveryRoutes.js';
 import adminDeliveryRoutes from './routes/adminDeliveryRoutes.js';
+
+// ✅ ADD THESE IMPORTS FOR SHIPPING & RETURNS
+import shippingRoutes from './routes/shippingRoutes.js';
+import returnRoutes from './routes/returnRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,7 +62,6 @@ connectDB();
 // Parse CORS origins from environment variable
 const getAllowedOrigins = () => {
   const origins = process.env.ALLOWED_ORIGINS;
-  // Split by comma and trim whitespace
   return origins.split(',').map(origin => origin.trim());
 };
 
@@ -77,12 +79,9 @@ await fastify.register(jwt, {
 
 await fastify.register(multipart, {
   limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024 // 5MB default
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024
   }
 });
-
-// ❌ REMOVED: fastify-static serving of local uploads folder
-// Images are now served directly from Cloudflare R2 public URL
 
 // Decorate middleware globally
 fastify.decorate('requireAdmin', requireAdmin);
@@ -112,10 +111,13 @@ await fastify.register(statsRoutes, { prefix: '/api' });
 await fastify.register(adminUserRoutes, { prefix: '/api' });
 await fastify.register(wardRoutes, { prefix: '/api' });
 
-
 // ✅ ADD DELIVERY BOY ROUTES
 await fastify.register(deliveryRoutes, { prefix: '/api' });
 await fastify.register(adminDeliveryRoutes, { prefix: '/api' });
+
+// ✅ ADD SHIPPING & RETURNS ROUTES
+await fastify.register(shippingRoutes, { prefix: '/api' });
+await fastify.register(returnRoutes, { prefix: '/api' });
 
 // Global error handler
 fastify.setErrorHandler((error, request, reply) => {
@@ -128,9 +130,9 @@ fastify.setErrorHandler((error, request, reply) => {
 
 const start = async () => {
   try {
-    await fastify.listen({ 
-      port: process.env.PORT || 3000, 
-      host: process.env.HOST || '0.0.0.0' 
+    await fastify.listen({
+      port: process.env.PORT || 3000,
+      host: process.env.HOST || '0.0.0.0'
     });
     console.log(`Server running on port ${process.env.PORT || 3000}`);
     console.log(`CORS enabled for origins: ${getAllowedOrigins().join(', ')}`);
@@ -139,6 +141,8 @@ const start = async () => {
     console.log(`Stats routes registered at: /api/stats`);
     console.log(`✅ Delivery boy routes registered at: /api/delivery`);
     console.log(`✅ Admin delivery routes registered at: /api/admin/delivery-boys`);
+    console.log(`✅ Shipping routes registered at: /api/shipping`);
+    console.log(`✅ Returns routes registered at: /api/returns`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

@@ -1,13 +1,39 @@
 // services/smsService.js
 import axios from 'axios';
 import dotenv from 'dotenv';
+import Setting from '../models/Setting.js';
 
 dotenv.config();
 
 const TWO_FACTOR_API_KEY = process.env.TWO_FACTOR_API_KEY;
 const TWO_FACTOR_BASE_URL = process.env.TWO_FACTOR_BASE_URL || 'https://2factor.in/API/V1';
 
-// Send SMS using 2Factor API
+// ============================================
+// 🎯 SENDER NAME — Dynamic from Settings
+// ============================================
+let cachedSiteName = null;
+let cacheTime = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+const getSenderName = async () => {
+  const now = Date.now();
+  if (cachedSiteName && now - cacheTime < CACHE_TTL) {
+    return cachedSiteName;
+  }
+  try {
+    const settings = await Setting.findOne().select('siteName');
+    cachedSiteName = settings?.siteName?.trim() || 'MeenavanFresh';
+    cacheTime = now;
+    return cachedSiteName;
+  } catch (error) {
+    console.error('Error fetching site name:', error);
+    return cachedSiteName || 'MeenavanFresh';
+  }
+};
+
+// ============================================
+// 📱 CORE SMS FUNCTION
+// ============================================
 export const sendSMS = async (phoneNumber, message) => {
   try {
     if (!TWO_FACTOR_API_KEY) {
@@ -25,23 +51,21 @@ export const sendSMS = async (phoneNumber, message) => {
       return { success: false, message: 'Invalid phone number format' };
     }
 
-    // ✅ FIX: Use ADDON_SERVICES with "Auto" instead of AUTOGEN2
-    // For custom messages, use this format:
     const url = `${TWO_FACTOR_BASE_URL}/${TWO_FACTOR_API_KEY}/ADDON_SERVICES/SEND/PSMS/${cleanedPhone}/Auto/${encodeURIComponent(message)}`;
-    
+
     console.log(`📱 Sending SMS to ${cleanedPhone}...`);
     console.log(`📝 Message: ${message}`);
     console.log(`🔗 URL: ${url}`);
-    
+
     const response = await axios.get(url, {
       timeout: 10000,
       headers: {
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+      },
     });
-    
+
     console.log(`📡 Response:`, response.data);
-    
+
     if (response.data.Status === 'Success') {
       console.log(`✅ SMS sent successfully to ${cleanedPhone}`);
       return { success: true, status: response.data.Status, details: response.data };
@@ -49,7 +73,7 @@ export const sendSMS = async (phoneNumber, message) => {
       console.error(`❌ SMS failed: ${response.data.Status} - ${response.data.Details || 'Unknown error'}`);
       return { success: false, message: response.data.Status, details: response.data };
     }
-    
+
   } catch (error) {
     console.error('❌ SMS sending error details:');
     if (error.response) {
@@ -71,12 +95,11 @@ export const sendSMSTemplate = async (phoneNumber, templateId, templateData = {}
     if (cleanedPhone.startsWith('91') && cleanedPhone.length === 12) {
       cleanedPhone = cleanedPhone.substring(2);
     }
-    
-    // For template-based SMS (Recommended for transactional messages)
+
     const url = `${TWO_FACTOR_BASE_URL}/${TWO_FACTOR_API_KEY}/ADDON_SERVICES/SEND/TSMS/${cleanedPhone}/Auto/${templateId}`;
-    
+
     const response = await axios.get(url, { timeout: 10000 });
-    
+
     if (response.data.Status === 'Success') {
       console.log(`✅ Template SMS sent successfully`);
       return { success: true, details: response.data };
@@ -90,29 +113,37 @@ export const sendSMSTemplate = async (phoneNumber, templateId, templateData = {}
   }
 };
 
+// ============================================
+// 📱 ORDER SMS — Dynamic Site Name
+// ============================================
+
 // Send order confirmation SMS
 export const sendOrderConfirmationSMS = async (phoneNumber, order) => {
-  const message = `MeenavanFresh: Order ${order.orderId} confirmed! Amount: ₹${order.finalAmount}. We'll notify you once shipped. Thank you!`;
+  const siteName = await getSenderName();
+  const message = `${siteName}: Order ${order.orderId} confirmed! Amount: ₹${order.finalAmount}. We'll notify you once shipped. Thank you!`;
   return await sendSMS(phoneNumber, message);
 };
 
 // Send order status update SMS
 export const sendOrderStatusSMS = async (phoneNumber, order, newStatus) => {
+  const siteName = await getSenderName();
+
   const statusMessages = {
     confirmed: `Order ${order.orderId} confirmed!`,
     processing: `Order ${order.orderId} is being processed.`,
     shipped: `Order ${order.orderId} has been shipped!`,
-    delivered: `Order ${order.orderId} delivered! Thank you for shopping with MeenavanFresh.`,
-    cancelled: `Order ${order.orderId} has been cancelled.`
+    delivered: `Order ${order.orderId} delivered! Thank you for shopping with ${siteName}.`,
+    cancelled: `Order ${order.orderId} has been cancelled.`,
   };
-  
-  const message = `MeenavanFresh: ${statusMessages[newStatus] || `Order ${order.orderId} status updated to ${newStatus}`}`;
+
+  const message = `${siteName}: ${statusMessages[newStatus] || `Order ${order.orderId} status updated to ${newStatus}`}`;
   return await sendSMS(phoneNumber, message);
 };
 
 // Send order cancellation SMS
 export const sendOrderCancellationSMS = async (phoneNumber, order, reason) => {
-  const message = `MeenavanFresh: Order ${order.orderId} cancelled.${reason ? ` Reason: ${reason}` : ''} Contact support for queries.`;
+  const siteName = await getSenderName();
+  const message = `${siteName}: Order ${order.orderId} cancelled.${reason ? ` Reason: ${reason}` : ''} Contact support for queries.`;
   console.log(`📱 Sending cancellation SMS to ${phoneNumber} for order ${order.orderId}`);
   const result = await sendSMS(phoneNumber, message);
   if (result.success) {
@@ -125,14 +156,18 @@ export const sendOrderCancellationSMS = async (phoneNumber, order, reason) => {
 
 // Send order refund SMS
 export const sendOrderRefundSMS = async (phoneNumber, order, refundAmount, reason) => {
-  const message = `MeenavanFresh: Refund of ₹${refundAmount} for order ${order.orderId} has been processed. Amount will reflect in 5-7 business days. Thank you!`;
+  const siteName = await getSenderName();
+  const message = `${siteName}: Refund of ₹${refundAmount} for order ${order.orderId} has been processed. Amount will reflect in 5-7 business days. Thank you!`;
   return await sendSMS(phoneNumber, message);
 };
 
-// Test function to verify SMS configuration
+// ============================================
+// 🧪 TEST
+// ============================================
 export const testSMS = async (phoneNumber) => {
   console.log('🧪 Testing SMS configuration...');
-  const result = await sendSMS(phoneNumber, 'Test message from MeenavanFresh API');
+  const siteName = await getSenderName();
+  const result = await sendSMS(phoneNumber, `Test message from ${siteName} API`);
   console.log('Test result:', result);
   return result;
 };
